@@ -69,9 +69,12 @@ class Drawing_Bot:
                 self.busy = 0
 
     def restart(self):
-        message = f'RST'
-        self.serial.write(message.encode('utf-8'))
-        self.serial.close()
+        try:
+            message = f'RST'
+            self.serial.write(message.encode('utf-8'))
+            self.serial.close()
+        except:
+            self.error_handler(ErrorCode.COMMUNICATION_ERROR, "Serial connection failed.")
 
     def is_ready(self):
         if not self.serial.is_open():
