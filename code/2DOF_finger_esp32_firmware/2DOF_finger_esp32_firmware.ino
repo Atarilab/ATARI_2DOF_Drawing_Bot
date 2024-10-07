@@ -1,0 +1,243 @@
+#include <SimpleFOC.h>
+#include <Wire.h>
+#include <math.h>
+
+//#define ANGLE_CALIBRATION
+//#define DEBUG
+
+// I2C setup
+int SDA_1 = 33;
+int SCL_1 = 32;
+int SDA_2 = 23;
+int SCL_2 = 22;
+int freq = 100000;
+
+int IN1_LEFT = 26;
+int IN2_LEFT = 27;
+int IN3_LEFT = 14;
+int EN_LEFT = 12;
+int GND_LEFT = 15;
+
+int IN1_RIGHT = 2;
+int IN2_RIGHT = 0;
+int IN3_RIGHT = 4;
+int EN_RIGHT = 16;
+int GND_RIGHT = 25;
+
+TwoWire i2cOne = TwoWire(0);
+TwoWire i2cTwo = TwoWire(1);
+
+// BLDC motor & driver instance
+BLDCMotor motorLeft = BLDCMotor(7, 11.2);
+BLDCDriver3PWM driverLeft = BLDCDriver3PWM(26, 27, 14, 12);
+
+//BLDCMotor motorRight = BLDCMotor(6, 11.2);
+BLDCMotor motorRight = BLDCMotor(7, 11.2);
+BLDCDriver3PWM driverRight = BLDCDriver3PWM(2, 0, 4, 16);
+
+// Magnetic encoders
+MagneticSensorI2C encoderLeft = MagneticSensorI2C(AS5600_I2C);
+MagneticSensorI2C encoderRight = MagneticSensorI2C(AS5600_I2C);
+
+// commander communication instance
+Commander command = Commander(Serial);
+void doMotionLeft(char* cmd){ command.motion(&motorLeft, cmd); }
+void doMotionRight(char* cmd){ command.motion(&motorRight, cmd); }
+void onPid(char* cmd){ command.pid(&motorLeft.P_angle, cmd); }
+// void doMotor(char* cmd){ command.motor(&motor, cmd); }
+
+float find_zero_angle(FOCMotor* motor, int direction) {
+  float zero_angle = 0;
+  
+  motor->target = motor->shaft_angle - (direction * 18.85);
+
+  int timer = millis();
+  float previous_position = motor->shaft_angle + direction;
+
+  while(1) {
+    motor->loopFOC();
+    motor->move();
+
+    if ( fabs(motor->shaft_velocity) < 0.1) {
+      if (millis()-timer > 100) {
+        if (direction+1) zero_angle = motor->shaft_angle+0.3;
+        else zero_angle = motor->shaft_angle - 9.42;
+        break;
+      }
+    }
+    else timer = millis();
+
+    previous_position = motor->shaft_angle; 
+    //Serial.println(previous_position);
+  }
+
+  motor->target = zero_angle + 4.71;
+
+  timer = millis();
+  while (1) {
+    motor->loopFOC();
+    motor->move();
+
+    if (millis() - timer > 500) {
+      if (fabs(motor->shaft_velocity) < 0.02) break;
+    }
+  }
+
+  Serial.println("Zero angle found!");
+  return zero_angle;
+
+}
+
+void setup() {
+
+  i2cOne.begin(SDA_1, SCL_1, freq);
+  i2cTwo.begin(SDA_2, SCL_2, freq);
+
+  pinMode(GND_LEFT, OUTPUT);
+  pinMode(GND_RIGHT, OUTPUT);
+  digitalWrite(GND_LEFT, 0);
+  digitalWrite(GND_RIGHT, 0);
+  
+  // use monitoring with serial
+  //Serial.setPins(-1, -1, 15, 14);
+  //Serial.setHwFlowCtrlMode(UART_HW_FLOWCTRL_CTS_RTS, 64);
+  delay(10);
+  Serial.begin(115200);
+  //Serial.begin(921600);
+  // enable more verbose output for debugging
+  // comment out if not needed
+  //SimpleFOCDebug::enable(&Serial);
+
+  // initialize encoder sensor hardware
+  encoderLeft.init(&i2cOne);
+  encoderRight.init(&i2cTwo);
+
+  // link the motor to the sensor
+  motorLeft.linkSensor(&encoderLeft);
+  motorRight.linkSensor(&encoderRight);
+
+  // driver config
+  // power supply voltage [V]
+  driverLeft.voltage_power_supply = 12;
+  driverLeft.init();
+  driverRight.voltage_power_supply = 12;
+  driverRight.init();
+
+  // link driver
+  motorLeft.linkDriver(&driverLeft);
+  motorRight.linkDriver(&driverRight);
+
+  // aligning voltage [V]
+  motorLeft.voltage_sensor_align = 12;
+  motorRight.voltage_sensor_align = 12;
+
+  // set control loop type to be used
+  motorLeft.controller = MotionControlType::angle;
+  motorRight.controller = MotionControlType::angle;
+
+  // contoller configuration based on the control type
+  motorLeft.PID_velocity.P = 0.01;
+  motorLeft.PID_velocity.I = 0.05;
+  motorLeft.PID_velocity.D = 0.0;
+  motorLeft.P_angle.P = 50;
+
+  motorRight.PID_velocity.P = 0.01;
+  motorRight.PID_velocity.I = 0.05;
+  motorRight.PID_velocity.D = 0.0;
+  motorRight.P_angle.P = 50;
+
+  // default voltage_power_supply
+  //motorLeft.voltage_limit = 12;
+  //motorRight.voltage_limit = 12;
+
+  // velocity low pass filtering time constant
+  //motorLeft.LPF_velocity.Tf = 2;
+  //motorLeft.LPF_angle.Tf = 0.1;
+  //motorRight.LPF_velocity.Tf = 2;
+  //motorRight.LPF_velocity.Tf = 0.1;
+
+  // angle loop controller
+  //motorLeft.P_angle.P = 20;
+  //motorRight.P_angle.P = 20;
+  // angle loop velocity limit
+  motorLeft.velocity_limit = 20;
+  motorRight.velocity_limit = 20;
+
+  // comment out if not needed
+  /*
+  motorLeft.useMonitoring(Serial);
+  motorLeft.monitor_downsample = 0; // disable intially
+  motorLeft.monitor_variables = _MON_TARGET | _MON_VEL | _MON_ANGLE; // monitor target velocity and angle
+
+  motorRight.useMonitoring(Serial);
+  motorRight.monitor_downsample = 1; // disable intially
+  motorRight.monitor_variables = _MON_TARGET | _MON_VEL | _MON_ANGLE; // monitor target velocity and angle
+  */
+  
+  // initialise motor
+  motorLeft.init();
+  motorRight.init();
+#ifndef ANGLE_CALIBRATION
+  // align encoder and start FOC
+  motorLeft.initFOC();
+  motorRight.initFOC();
+
+  Serial.println("Finding zero angle for left motor");
+  motorLeft.sensor_offset = find_zero_angle(&motorLeft, 1); //2.39;
+  Serial.println("Finding zero angle for right motor");
+  motorRight.sensor_offset = find_zero_angle(&motorRight, -1); //-0.87;
+#endif
+  // subscribe motor to the commander
+  command.add('L', doMotionLeft, "motion control");
+  command.add('R', doMotionRight, "motion control");
+  command.add('C', onPid, "my pid");
+  // command.add('M', doMotor, "motor");
+
+  // set the inital target value
+  motorLeft.target =  4.71;
+  motorRight.target = 4.71;
+  
+  // Run user commands to configure and the motor (find the full command list in docs.simplefoc.com)
+  Serial.println("Motor ready.");
+
+  delay(1000);
+}
+
+
+void loop() {
+
+  #if defined ANGLE_CALIBRATION || defined DEBUG
+    encoderLeft.update();
+    encoderRight.update();
+    Serial.print("Left | Precision angle: ");
+    Serial.print(encoderLeft.getMechanicalAngle());
+    Serial.print("\tAngle and Rotations: ");
+    Serial.println(encoderLeft.getAngle());
+    Serial.print("Right | Precision angle: ");
+    Serial.print(encoderRight.getMechanicalAngle());
+    Serial.print("\tAngle and Rotations: ");
+    Serial.println(encoderRight.getAngle());
+    Serial.println();
+    #ifdef ANGLE_CALIBRATION
+      delay(200);
+    #endif
+  #endif
+
+  #ifndef ANGLE_CALIBRATION
+    // iterative setting FOC phase voltage
+    motorLeft.loopFOC();
+    motorRight.loopFOC();
+
+    // iterative function setting the outter loop target
+    motorLeft.move();
+    motorRight.move();
+
+    // motor monitoring
+    //motorLeft.monitor();
+    //motorRight.monitor();
+
+    // user communication
+    command.run();
+
+  #endif
+}
