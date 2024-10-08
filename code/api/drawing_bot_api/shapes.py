@@ -13,28 +13,29 @@ class Line:
         y = self.start_point[1] + ( (self.end_point[1] - self.start_point[1]) * t)
         return [x, y]
     
-    def plot(self):
+    def plot(self, color=SHAPE_COLOR, label=None):
         sample_number = int(PLOTTING_RESOLUTION * self.circumference)
         for t in range(sample_number):
             point = self.get_point(t/sample_number)
-            plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR)
+            plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color, label=label)
 
 class Circle:
     def __init__(self, center_point, radius):
         self.center_point = center_point
         self.radius = radius
         self.circumference = 2 * pi * self.radius
+        self.start_point = [self.center_point[0]+self.radius, self.center_point[1]]
 
     def get_point(self, t):
         x = cos(2 * pi * t) * self.radius + self.center_point[0]
         y = sin(2 * pi * t) * self.radius + self.center_point[1]
         return [x, y]
     
-    def plot(self):
+    def plot(self, color=SHAPE_COLOR, label=None):
         sample_number = int(PLOTTING_RESOLUTION * self.circumference)
         for t in range(sample_number):
             point = self.get_point(t/sample_number)
-            plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR)
+            plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color)
 
 class Partial_circle:
     def __init__(self, start_point, end_point, radius, direction):
@@ -66,11 +67,11 @@ class Partial_circle:
         y = self.radius * sin(self.offset + (t * self.direction * self.section_angle)) + self.center_point[1]
         return [x, y]
     
-    def plot(self):
+    def plot(self, color=SHAPE_COLOR, label=None):
         sample_number = int(PLOTTING_RESOLUTION * self.circumference)
         for t in range(sample_number):
             point = self.get_point(t/sample_number)
-            plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR)
+            plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color)
 
 if __name__ == '__main__':
     circ = Partial_circle([1, 0], [3, 8], 5, 1)

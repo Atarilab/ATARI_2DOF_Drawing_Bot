@@ -1,4 +1,5 @@
 from drawing_bot_api.delta_utils import plt
+import matplotlib.patches as mpatches
 from drawing_bot_api.delta_utils import plot_delta
 from drawing_bot_api.delta_utils import ik_delta
 from drawing_bot_api.delta_utils import plot_box
@@ -26,15 +27,20 @@ class Drawing_Bot:
         self.current_position = [0, 0]
         self.busy = 0
         self.speed = speed
-        self.unit = 0
+        self.unit = 1000
         self.shapes = []
         
         if unit == 'm' or unit == 'meter':
             self.unit = 1
+            self.log('Unit set to "m".')
         elif unit == 'cm' or unit == 'centimeter':
             self.unit = 100
+            self.log('Unit set to "cm".')
         elif unit == 'mm' or unit == 'millimeter':
-            self.unit == 1000
+            self.unit = 1000
+            self.log('Unit set to "mm".')
+        else:
+            self.error_handler(f'Invalid unit ("{unit}"). Reverting to default ("mm").', warning=True)
 
     def get_angles(self, position):
         try:
@@ -61,17 +67,53 @@ class Drawing_Bot:
     def add_shape(self, shape):
         self.shapes.append(shape)
 
-    def plot(self):
-        fig, ax = plt.subplots() # note we must use plt.subplots, not plt.subplot
-        ax.set_xlim((-PLOT_XLIM, PLOT_XLIM))
-        ax.set_ylim((0, PLOT_YLIM))
+    def __plot_domain(self):
+        shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[1]).plot(color=DOMAIN_COLOR)
+        shapes.Line(DOMAIN_BOX[2], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR)
+        shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR)
+        shapes.Partial_circle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR)
+
+    def plot(self, blocking=True):
+        _, ax = plt.subplots()
+        ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
+        ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
+
+        self.__plot_domain()
+
+        if not self.shapes:
+            plt.show(block=blocking)
+            return 0
+
+        plt.plot(self.shapes[0].start_point[0], self.shapes[0].start_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
+
+        previous_shape = shapes.Line([0, 0], self.shapes[0].start_point)
 
         for shape in self.shapes:
+            if shape.start_point != previous_shape.end_point:
+                __bridge_line = shapes.Line(previous_shape.end_point, shape.start_point)
+                __bridge_line.plot(color=BRIDGE_COLOR)
+
             shape.plot()
+            previous_shape = shape
 
-        plt.show()
+        plt.plot(previous_shape.end_point[0], previous_shape.end_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
+        plt.plot(0, 0, color=BRIDGE_COLOR, label='Bridging lines')
+        plt.plot(0, 0, color=SHAPE_COLOR, label='User defined drawings')
+        plt.plot(0, 0, color=DOMAIN_COLOR, label='Domain')
 
-    def execute(self, shape): # time defines how long the drawing process should take
+        #plt.legend(['Start point', 'Bridge lines', 'User defined drawings', 'End point'], loc="lower right")
+        plt.legend(bbox_to_anchor=(1, 1.15), ncol=3)
+
+        plt.show(block=blocking)
+
+    def execute(self, promting=True): # time defines how long the drawing process should take
+        if promting:
+            while(1):
+                answer = input('Do you want to continue with this drawing? (y/n)\n')
+                if answer == 'n':
+                    return 1
+                elif answer == 'y':
+                    break
         for shape in self.shapes:
             __duration = shape.circumference / self.speed
             self.busy = 1
@@ -90,6 +132,7 @@ class Drawing_Bot:
                     self.busy = 0
         
         self.shapes.clear()
+        plt.show()
 
     def restart(self):
         try:
