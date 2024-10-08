@@ -59,10 +59,11 @@ class Partial_circle:
 
         center_to_start_vector = [self.start_point[0]-self.center_point[0], self.start_point[1]-self.center_point[1]]
         self.offset = atan2(center_to_start_vector[1], center_to_start_vector[0])
+        print(self.offset)
 
     def get_point(self, t):
-        x = self.radius * cos(self.offset + t * self.section_angle) + self.center_point[0]
-        y = self.radius * sin(self.offset + t * self.section_angle) + self.center_point[1]
+        x = self.radius * cos(self.offset + (t * self.direction * self.section_angle)) + self.center_point[0]
+        y = self.radius * sin(self.offset + (t * self.direction * self.section_angle)) + self.center_point[1]
         return [x, y]
     
     def plot(self):
