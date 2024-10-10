@@ -10,10 +10,8 @@ from drawing_bot_api.logger import Log, Error_handler, ErrorCode
 from drawing_bot_api import shapes
 from drawing_bot_api.config import *
 
-SERIAL_DELAY = 0.005
-
 class Drawing_Bot:
-    def __init__(self, baud=115200, verbose=2, unit='mm', speed=50):
+    def __init__(self, baud=115200, verbose=2, unit='mm', speed=100):
         # unit: Define which unit the user is using
         # speed is measured in unit/s
         self.log = Log((verbose-1)>0)
@@ -22,7 +20,7 @@ class Drawing_Bot:
         try:
             self.serial = serial.Serial('/dev/cu.usbserial-0001', baud)
         except:
-            self.error_handler(ErrorCode.COMMUNICATION_ERROR, "Serial initialization failed.")
+            self.error_handler("Serial initialization failed.", ErrorCode.COMMUNICATION_ERROR)
 
         self.current_position = [0, 0]
         self.busy = 0
@@ -43,25 +41,29 @@ class Drawing_Bot:
             self.error_handler(f'Invalid unit ("{unit}"). Reverting to default ("mm").', warning=True)
 
     def get_angles(self, position):
+        x=position[0]/self.unit
+        y=position[1]/self.unit
+
         try:
-            angles = ik_delta(position/self.unit)
+            angles = ik_delta([x, y])
             return angles
         except:
-            self.error_handler(ErrorCode.DOMAIN_ERROR, "Targeted position is outside of robots domain.")
+            self.error_handler("Targeted position is outside of robots domain.", ErrorCode.DOMAIN_ERROR)
             exit()
 
     def send_angle(self, angle, side):
 
         try:
-            message = f'{side}{3*float(angle)}'
+            message = f'{side}{3*float(angle)}\n'
             self.serial.write(message.encode('utf-8'))
         except:
-            self.error_handler(ErrorCode.COMMUNICATION_ERROR, "Serial connection failed.")
+            self.error_handler("Serial connection failed.", ErrorCode.COMMUNICATION_ERROR)
 
     def update_position(self, position):
         angles = self.get_angles(position)
-        self.send_angle(angles[0], 'L')
-        self.send_angle(angles[1], 'R')
+        self.log(f'Position: {position}, Angles: {angles}', clear=False)
+        self.send_angle(angles[0], 'W')
+        self.send_angle(angles[1], 'E')
         time.sleep(SERIAL_DELAY)
 
     def add_shape(self, shape):
@@ -108,15 +110,13 @@ class Drawing_Bot:
 
     def execute(self, promting=True): # time defines how long the drawing process should take
         if promting:
-            while(1):
-                answer = input('Do you want to continue with this drawing? (y/n)\n')
-                if answer == 'n':
-                    return 1
-                elif answer == 'y':
-                    break
+            answer = input('Do you want to continue with this drawing? (y/n)\n')
+            if answer != 'y':
+                return 1
+
         for shape in self.shapes:
-            __duration = shape.circumference / self.speed
-            self.busy = 1
+            __duration = (shape.circumference / self.speed) * 1000
+            self.busy = True
             __time = self.millis()
             
             while(self.busy):
@@ -125,35 +125,32 @@ class Drawing_Bot:
                     __t = 1
 
                 __target_position = shape.get_point(__t)
-                __time = self.millis()
                 self.update_position(__target_position)
 
                 if self.millis() - __time >= __duration:
-                    self.busy = 0
-        
+                    self.busy = False
+
         self.shapes.clear()
         plt.show()
 
     def restart(self):
         try:
-            message = f'RST'
+            message = f'R'
             self.serial.write(message.encode('utf-8'))
             self.serial.close()
         except:
             self.error_handler(ErrorCode.COMMUNICATION_ERROR, "Serial connection failed.")
 
     def is_ready(self):
-        if not self.serial.is_open():
+        if not self.serial.is_open:
             self.serial.open()
 
         buffer = []
-        while self.serial.in_waiting():
-            buffer.append(self.serial.read(1))
-        
-        if buffer == 'RDY':
-            return 1
-        
-        return 0
+        while self.serial.in_waiting:
+            buffer.append(self.serial.read(1).decode('utf-8'))
+        joined_list = ''.join(buffer)
+    
+        return 'RDY' in joined_list
 
     def millis(self):
         return time.time()*1000

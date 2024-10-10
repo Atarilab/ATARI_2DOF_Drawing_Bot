@@ -5,24 +5,26 @@
 //#define ANGLE_CALIBRATION
 //#define DEBUG
 
+#define READY_STATMENT_WAIT_TIME 1000 
+
 // I2C setup
-int SDA_1 = 33;
-int SCL_1 = 32;
-int SDA_2 = 23;
-int SCL_2 = 22;
-int freq = 100000;
+#define SDA_1 33
+#define SCL_1 32
+#define SDA_2 23
+#define SCL_2 22
+#define freq 100000
 
-int IN1_LEFT = 26;
-int IN2_LEFT = 27;
-int IN3_LEFT = 14;
-int EN_LEFT = 12;
-int GND_LEFT = 15;
+#define IN1_LEFT 26
+#define IN2_LEFT 27
+#define IN3_LEFT 14
+#define EN_LEFT 12
+#define GND_LEFT 15
 
-int IN1_RIGHT = 2;
-int IN2_RIGHT = 0;
-int IN3_RIGHT = 4;
-int EN_RIGHT = 16;
-int GND_RIGHT = 25;
+#define IN1_RIGHT 2
+#define IN2_RIGHT 0
+#define IN3_RIGHT 4
+#define EN_RIGHT 16
+#define GND_RIGHT 25
 
 TwoWire i2cOne = TwoWire(0);
 TwoWire i2cTwo = TwoWire(1);
@@ -45,6 +47,18 @@ void doMotionLeft(char* cmd){ command.motion(&motorLeft, cmd); }
 void doMotionRight(char* cmd){ command.motion(&motorRight, cmd); }
 void onPid(char* cmd){ command.pid(&motorLeft.P_angle, cmd); }
 // void doMotor(char* cmd){ command.motor(&motor, cmd); }
+
+void restart(char* cmd){
+  ESP.restart();
+}
+
+void send_ready_statement() {
+  static long int time = millis();
+  if ((millis() - time) > READY_STATMENT_WAIT_TIME) { 
+    Serial.println("RDY"); 
+    time = millis();
+  }
+}
 
 float find_zero_angle(FOCMotor* motor, int direction) {
   float zero_angle = 0;
@@ -188,9 +202,10 @@ void setup() {
   motorRight.sensor_offset = find_zero_angle(&motorRight, -1); //-0.87;
 #endif
   // subscribe motor to the commander
-  command.add('L', doMotionLeft, "motion control");
-  command.add('R', doMotionRight, "motion control");
+  command.add('W', doMotionLeft, "motion control");  // "West" - "Left" Motor
+  command.add('E', doMotionRight, "motion control"); // "East" - "Right" Motor
   command.add('C', onPid, "my pid");
+  command.add('R', restart, "restart");
   // command.add('M', doMotor, "motor");
 
   // set the inital target value
@@ -200,7 +215,9 @@ void setup() {
   // Run user commands to configure and the motor (find the full command list in docs.simplefoc.com)
   Serial.println("Motor ready.");
 
-  delay(1000);
+  send_ready_statement();
+  delay(2000);
+  send_ready_statement();
 }
 
 
@@ -238,6 +255,8 @@ void loop() {
 
     // user communication
     command.run();
+
+    //send_ready_statement();
 
   #endif
 }

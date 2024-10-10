@@ -1,3 +1,5 @@
+##### plotting settings
+
 SHAPE_COLOR = 'black'
 BRIDGE_COLOR = 'red'
 START_DOT_COLOR = 'green'
@@ -11,3 +13,7 @@ PLOT_YLIM = [60, 170]
 
 DOMAIN_BOX = [[-70, 70], [-70, 120], [70, 120], [70, 70]] # Points: botttom left, top left, top right, bottom right
 DOMAIN_DOME = [[-70, 120], [70, 120], 80, -1] # Start point, end point, radius, direction of a partial circle
+
+##### Other settings
+
+SERIAL_DELAY = 0.005 #seconds
