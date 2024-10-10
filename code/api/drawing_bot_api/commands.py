@@ -14,6 +14,7 @@ class Drawing_Bot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=100):
         # unit: Define which unit the user is using
         # speed is measured in unit/s
+
         self.log = Log((verbose-1)>0)
         self.error_handler = Error_handler(verbose)
     
@@ -69,18 +70,18 @@ class Drawing_Bot:
     def add_shape(self, shape):
         self.shapes.append(shape)
 
-    def __plot_domain(self):
-        shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[1]).plot(color=DOMAIN_COLOR)
-        shapes.Line(DOMAIN_BOX[2], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR)
-        shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR)
-        shapes.Partial_circle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR)
+    def __plot_domain(self, resolution=PLOTTING_RESOLUTION):
+        shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[1]).plot(color=DOMAIN_COLOR, resolution=resolution)
+        shapes.Line(DOMAIN_BOX[2], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
+        shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
+        shapes.Partial_circle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
 
-    def plot(self, blocking=True):
+    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION):
         _, ax = plt.subplots()
         ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
         ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
 
-        self.__plot_domain()
+        self.__plot_domain(resolution=resolution)
 
         if not self.shapes:
             plt.show(block=blocking)
@@ -93,9 +94,9 @@ class Drawing_Bot:
         for shape in self.shapes:
             if shape.start_point != previous_shape.end_point:
                 __bridge_line = shapes.Line(previous_shape.end_point, shape.start_point)
-                __bridge_line.plot(color=BRIDGE_COLOR)
+                __bridge_line.plot(color=BRIDGE_COLOR, resolution=resolution)
 
-            shape.plot()
+            shape.plot(resolution=resolution)
             previous_shape = shape
 
         plt.plot(previous_shape.end_point[0], previous_shape.end_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
@@ -107,6 +108,25 @@ class Drawing_Bot:
         plt.legend(bbox_to_anchor=(1, 1.15), ncol=3)
 
         plt.show(block=blocking)
+
+    def plot_sampled_domain(self):
+        fig, ax = plt.subplots()
+        ax.set_xlim(-120, 120)
+        ax.set_ylim(0, 200)
+        x_val = -125
+        y_val = 20
+        for y in range(50):
+            for x in range(50):
+                try:
+                    ik_delta([x_val/1000, y_val/1000])
+                    plt.plot(x_val, y_val, marker="o", markersize=3, markeredgecolor='black', markerfacecolor='black')
+                except:
+                    pass
+                x_val+=5
+            y_val += 4
+            x_val = -125
+        
+        plt.show()
 
     def execute(self, promting=True): # time defines how long the drawing process should take
         if promting:

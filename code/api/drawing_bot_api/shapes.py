@@ -13,8 +13,8 @@ class Line:
         y = self.start_point[1] + ( (self.end_point[1] - self.start_point[1]) * t)
         return [x, y]
     
-    def plot(self, color=SHAPE_COLOR, label=None):
-        sample_number = int(PLOTTING_RESOLUTION * self.circumference)
+    def plot(self, color=SHAPE_COLOR, label=None, resolution=PLOTTING_RESOLUTION):
+        sample_number = int(resolution * self.circumference)
         for t in range(sample_number):
             point = self.get_point(t/sample_number)
             plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color, label=label)
@@ -31,8 +31,8 @@ class Circle:
         y = sin(2 * pi * t) * self.radius + self.center_point[1]
         return [x, y]
     
-    def plot(self, color=SHAPE_COLOR, label=None):
-        sample_number = int(PLOTTING_RESOLUTION * self.circumference)
+    def plot(self, color=SHAPE_COLOR, label=None, resolution=PLOTTING_RESOLUTION):
+        sample_number = int(resolution * self.circumference)
         for t in range(sample_number):
             point = self.get_point(t/sample_number)
             plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color)
@@ -66,8 +66,8 @@ class Partial_circle:
         y = self.radius * sin(self.offset + (t * self.direction * self.section_angle)) + self.center_point[1]
         return [x, y]
     
-    def plot(self, color=SHAPE_COLOR, label=None):
-        sample_number = int(PLOTTING_RESOLUTION * self.circumference)
+    def plot(self, color=SHAPE_COLOR, label=None, resolution=PLOTTING_RESOLUTION):
+        sample_number = int(resolution * self.circumference)
         for t in range(sample_number):
             point = self.get_point(t/sample_number)
             plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color)

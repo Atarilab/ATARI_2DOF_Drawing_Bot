@@ -2,6 +2,7 @@ from drawing_bot_api import Drawing_Bot
 from drawing_bot_api import shapes
 from math import cos, sin, pi
 import time
+from drawing_bot_api import config
 
 drawing_bot = Drawing_Bot(unit='mm')
 
