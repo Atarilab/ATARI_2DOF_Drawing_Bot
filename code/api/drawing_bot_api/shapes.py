@@ -45,21 +45,28 @@ class Partial_circle:
         self.radius = radius
         self.direction = direction
 
-        x_distance = self.end_point[0] - self.start_point[0]
-        y_distance = self.end_point[1] - self.start_point[1]
-        abs_distance = sqrt(pow(x_distance, 2) + pow(y_distance, 2))
+        _xy_distance = self.__calc_xy_distance(start_point, end_point)
+        _abs_distance = self.__abs_distance(_xy_distance)
 
-        self.section_angle = 2*asin(abs_distance/(2*self.radius))
+        self.section_angle = 2*asin(_abs_distance/(2*self.radius))
         self.circumference = self.section_angle * self.radius
 
-        normal_point = [self.start_point[0]+x_distance/2, self.start_point[1]+y_distance/2]
-        normal_vector = [(-direction)*(y_distance/abs_distance), direction*(x_distance/abs_distance)]
-        normal_distance = self.radius * cos(self.section_angle/2)
+        self.center_point = self.__calc_center_point(self.start_point, self.end_point, self.direction, self.radius, _xy_distance, _abs_distance)
 
-        self.center_point = [normal_point[0] + (normal_vector[0] * normal_distance), normal_point[1] + (normal_vector[1] * normal_distance)]
+        _center_to_start_vector = self.__calc_xy_distance(self.center_point, self.start_point)
+        self.offset = atan2(_center_to_start_vector[1], _center_to_start_vector[0])
 
-        center_to_start_vector = [self.start_point[0]-self.center_point[0], self.start_point[1]-self.center_point[1]]
-        self.offset = atan2(center_to_start_vector[1], center_to_start_vector[0])
+    def __calc_xy_distance(self, point_1, point_2):
+        return [point_2[0] - point_1[0], point_2[1] - point_1[1]]
+    
+    def __abs_distance(self, xy_distance):
+        return sqrt(pow(xy_distance[0], 2) + pow(xy_distance[1], 2))
+    
+    def __calc_center_point(self, start_point, end_point, direction, radius, xy_distance, abs_distance):
+        _normal_point = [self.start_point[0]+xy_distance[0]/2, self.start_point[1]+xy_distance[1]/2]
+        _normal_vector = [(-direction)*(xy_distance[1]/abs_distance), direction*(xy_distance[0]/abs_distance)]
+        _normal_distance = self.radius * cos(self.section_angle/2)
+        return [_normal_point[0] + (_normal_vector[0] * _normal_distance), _normal_point[1] + (_normal_vector[1] * _normal_distance)]
 
     def get_point(self, t):
         x = self.radius * cos(self.offset + (t * self.direction * self.section_angle)) + self.center_point[0]
