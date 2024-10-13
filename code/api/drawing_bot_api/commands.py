@@ -18,7 +18,6 @@ class Drawing_Bot:
 
         self.log = Log((verbose-1)>0)
         self.error_handler = Error_handler(verbose)
-        self.serial_handler = Serial_handler()
 
         self.current_position = [0, 0]
         self.busy = 0
@@ -49,15 +48,15 @@ class Drawing_Bot:
             self.error_handler("Targeted position is outside of robots domain.", ErrorCode.DOMAIN_ERROR)
             exit()
 
-    def send_angle(self, angle, side):
+    def send_angle(self, angle, side, serial_handler):
         message = f'{side}{3*float(angle)}\n'
-        self.serial_handler(message)
+        serial_handler(message)
 
-    def update_position(self, position):
+    def update_position(self, position, serial_handler):
         angles = self.get_angles(position)
         self.log(f'Position: {position}, Angles: {angles}', clear=False)
-        self.send_angle(angles[0], 'W')
-        self.send_angle(angles[1], 'E')
+        self.send_angle(angles[0], 'W', serial_handler)
+        self.send_angle(angles[1], 'E', serial_handler)
         time.sleep(SERIAL_DELAY)
 
     def add_shape(self, shape):
@@ -122,6 +121,8 @@ class Drawing_Bot:
         plt.show()
 
     def execute(self, promting=True): # time defines how long the drawing process should take
+        serial_handler = Serial_handler()
+
         if promting:
             answer = input('Do you want to continue with this drawing? (y/n)\n')
             if answer != 'y':
@@ -138,12 +139,13 @@ class Drawing_Bot:
                     __t = 1
 
                 __target_position = shape.get_point(__t)
-                self.update_position(__target_position)
+                self.update_position(__target_position, serial_handler=serial_handler)
 
                 if self.millis() - __time >= __duration:
                     self.busy = False
 
         self.shapes.clear()
+        serial_handler.send_buffer()
         plt.show()
 
     def restart(self):

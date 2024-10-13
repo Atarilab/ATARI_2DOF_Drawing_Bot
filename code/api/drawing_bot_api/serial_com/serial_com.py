@@ -71,7 +71,6 @@ def main():
             try:
                 while True:
 
-                    client_socket.send('1'.encode('utf-8'))
                     data = client_socket.recv(1024)  # Receive data
                     print(f'Received Data: {data}')
                     if not data:

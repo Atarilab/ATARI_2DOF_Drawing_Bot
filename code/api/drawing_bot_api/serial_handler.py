@@ -17,12 +17,26 @@ class Serial_handler:
         self.server_socket.listen()
         self.conn = None
         self.addr = None
+        self.__init_connection()
+        self.buffer = []
+
+    def __init_connection(self):
+        while True:
+            if self.check_serial_script_running():
+                break
+            else:
+                self.start_serial_script()
+                time.sleep(3)
+                print('Starting serial communication script')
+        
+        self.connect_to_serial_script()
+        print('Connected to serial script.')
 
     def connect_to_serial_script(self):
         self.conn, self.addr = self.server_socket.accept()
         print('Connected to serial script.')
 
-    def check_socket_still_connected(self, conn):
+    def check_socket_connected(self, conn):
         try:
             data = conn.recv(1024)
             #print(f'Data from socket client: {data}')
@@ -63,32 +77,24 @@ class Serial_handler:
     def kill_serial_script(self):
         self.check_serial_script_running(kill=True)
 
-    def send_message_to_script(self, message):
-        is_sent = False
-
-        while not is_sent:
+    def send_buffer(self):
+        print('HERE 1')
+        #if not self.check_socket_connected(self.conn):
+            # RAISE EXCEPTION HERE
+            #pass
+        
+        print('HERE 2')
+        for message in self.buffer:
             try:
-                if self.check_socket_still_connected(self.conn):
-                    #print("Sending message")
-                    self.conn.sendall(str(message).encode('utf-8'))
-                    is_sent = True
-                else:
-                    print('No connection')
-                    print("Connecting to serial script...")
-                    self.connect_to_serial_script()
+                self.conn.sendall(str(message).encode('utf-8'))
             except:
-                print("Connecting to serial script...")
-                self.connect_to_serial_script()
+                pass
+                # RAISE EXCEPTION ABOUT THIS
+
+        self.buffer.clear()
 
     def __call__(self, message):
-        if self.check_serial_script_running():
-            self.send_message_to_script(message)
-            return 0
-        else:
-            self.start_serial_script()
-            time.sleep(3)
-            print('Starting serial communication script')
-            return 1
+        self.buffer.append(message)
 
 if __name__ == '__main__':
     serial_handler = Serial_handler()
