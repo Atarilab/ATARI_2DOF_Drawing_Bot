@@ -27,7 +27,7 @@ def main():
     drawing_bot.add_shape(shapes.Line([40, 100], [-40, 100]))
     drawing_bot.add_shape(shapes.Partial_circle([-40, 100], [-40, 80], 10, 1))
     drawing_bot.add_shape(shapes.Line([-40, 80], [0, 80]))
-    drawing_bot.plot(blocking=True)
-    #drawing_bot.execute(promting=True)
+    #drawing_bot.plot(blocking=False)
+    drawing_bot.execute(promting=False)
     
 main()

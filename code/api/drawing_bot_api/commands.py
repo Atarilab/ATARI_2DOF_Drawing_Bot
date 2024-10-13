@@ -9,6 +9,7 @@ import serial
 from drawing_bot_api.logger import Log, Error_handler, ErrorCode
 from drawing_bot_api import shapes
 from drawing_bot_api.config import *
+from drawing_bot_api.serial_handler import Serial_handler
 
 class Drawing_Bot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=100):
@@ -17,11 +18,7 @@ class Drawing_Bot:
 
         self.log = Log((verbose-1)>0)
         self.error_handler = Error_handler(verbose)
-    
-        try:
-            self.serial = serial.Serial('/dev/cu.usbserial-0001', baud)
-        except:
-            self.error_handler("Serial initialization failed.", ErrorCode.COMMUNICATION_ERROR)
+        self.serial_handler = Serial_handler()
 
         self.current_position = [0, 0]
         self.busy = 0
@@ -53,12 +50,8 @@ class Drawing_Bot:
             exit()
 
     def send_angle(self, angle, side):
-
-        try:
-            message = f'{side}{3*float(angle)}\n'
-            self.serial.write(message.encode('utf-8'))
-        except:
-            self.error_handler("Serial connection failed.", ErrorCode.COMMUNICATION_ERROR)
+        message = f'{side}{3*float(angle)}\n'
+        self.serial_handler(message)
 
     def update_position(self, position):
         angles = self.get_angles(position)
@@ -160,17 +153,6 @@ class Drawing_Bot:
             self.serial.close()
         except:
             self.error_handler(ErrorCode.COMMUNICATION_ERROR, "Serial connection failed.")
-
-    def is_ready(self):
-        if not self.serial.is_open:
-            self.serial.open()
-
-        buffer = []
-        while self.serial.in_waiting:
-            buffer.append(self.serial.read(1).decode('utf-8'))
-        joined_list = ''.join(buffer)
-    
-        return 'RDY' in joined_list
 
     def millis(self):
         return time.time()*1000
