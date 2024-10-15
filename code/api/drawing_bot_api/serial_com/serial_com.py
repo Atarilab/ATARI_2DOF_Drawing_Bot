@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import serial
 from config import *
 import time
