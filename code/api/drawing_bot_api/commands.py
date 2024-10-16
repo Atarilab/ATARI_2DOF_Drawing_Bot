@@ -12,7 +12,7 @@ from drawing_bot_api.config import *
 from drawing_bot_api.serial_handler import Serial_handler
 
 class Drawing_Bot:
-    def __init__(self, baud=115200, verbose=2, unit='mm', speed=100):
+    def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
         # unit: Define which unit the user is using
         # speed is measured in unit/s
 
@@ -52,12 +52,22 @@ class Drawing_Bot:
         message = f'{side}{3*float(angle)}\n'
         serial_handler(message)
 
+    # OLD AND UNUSED #########
     def update_position(self, position, serial_handler):
         angles = self.get_angles(position)
         self.log(f'Position: {position}, Angles: {angles}', clear=False)
         self.send_angle(angles[0], 'W', serial_handler)
         self.send_angle(angles[1], 'E', serial_handler)
         time.sleep(SERIAL_DELAY)
+    ##########################
+
+    def add_position(self, position, serial_handler):
+        angles = self.get_angles(position)
+        self.log(f'Position: {position}, Angles: {angles}', clear=False)
+        self.send_angle(angles[0], 'W', serial_handler)
+        self.send_angle(angles[1], 'E', serial_handler)
+        #time.sleep(SERIAL_DELAY)
+
 
     def add_shape(self, shape):
         self.shapes.append(shape)
@@ -129,10 +139,14 @@ class Drawing_Bot:
                 return 1
 
         for shape in self.shapes:
-            __duration = (shape.circumference / self.speed) * 1000
-            self.busy = True
-            __time = self.millis()
-            
+            __duration = (shape.circumference / self.speed) # in seconds
+            __number_of_points = int(__duration / SERIAL_DELAY)
+
+            for i in range(__number_of_points):
+                point = shape.get_point(i * (1/__number_of_points))
+                self.add_position(point, serial_handler=serial_handler)
+
+            '''
             while(self.busy):
                 __t = (self.millis() - __time) / __duration
                 if __t > 1:
@@ -143,6 +157,9 @@ class Drawing_Bot:
 
                 if self.millis() - __time >= __duration:
                     self.busy = False
+            '''
+
+        self.add_position(self.shapes[-1].get_point(1), serial_handler=serial_handler) # Add last point 
 
         self.shapes.clear()
         serial_handler.send_buffer()

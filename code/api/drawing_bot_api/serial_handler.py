@@ -3,6 +3,7 @@ import time
 import os
 import psutil
 import subprocess
+from drawing_bot_api.config import *
 
 class Serial_handler:
 
@@ -11,13 +12,12 @@ class Serial_handler:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
         self.server_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.server_socket.settimeout(10)
+        self.server_socket.settimeout(20)
         #self.server_socket.setblocking(False)
         self.server_socket.bind(('localhost', 65432))  # Bind to localhost on port 65432
         self.server_socket.listen()
         self.conn = None
         self.addr = None
-        self.__init_connection()
         self.buffer = []
 
     def __init_connection(self):
@@ -26,11 +26,14 @@ class Serial_handler:
                 break
             else:
                 self.start_serial_script()
-                time.sleep(3)
+                time.sleep(10)
                 print('Starting serial communication script')
         
         self.connect_to_serial_script()
-        print('Connected to serial script.')
+
+    def __disconnect(self):
+        if self.conn != None:
+            self.conn.close()
 
     def connect_to_serial_script(self):
         self.conn, self.addr = self.server_socket.accept()
@@ -78,12 +81,9 @@ class Serial_handler:
         self.check_serial_script_running(kill=True)
 
     def send_buffer(self):
-        print('HERE 1')
-        #if not self.check_socket_connected(self.conn):
-            # RAISE EXCEPTION HERE
-            #pass
-        
-        print('HERE 2')
+        self.__init_connection()
+        __time = self.millis()
+
         for message in self.buffer:
             try:
                 self.conn.sendall(str(message).encode('utf-8'))
@@ -91,7 +91,18 @@ class Serial_handler:
                 pass
                 # RAISE EXCEPTION ABOUT THIS
 
+            __delay = SERIAL_DELAY - ((self.millis() - __time)/1000)
+            if __delay < 0:
+                __delay = 0
+            time.sleep(__delay)
+            __time = self.millis()
+
         self.buffer.clear()
+
+        self.__disconnect()
+
+    def millis(self):
+        return time.time()*1000
 
     def __call__(self, message):
         self.buffer.append(message)

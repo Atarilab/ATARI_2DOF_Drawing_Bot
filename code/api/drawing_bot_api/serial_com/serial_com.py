@@ -12,6 +12,14 @@ class Serial_communicator():
         while not self.is_ready():
             time.sleep(0.1)
 
+    def check_connection(self):
+        try:
+            self.serial.write('_\n'.encode('utf-8'))
+            return True
+        except:
+            print('Serial connection lost.')
+            return False
+
     def handle_serial_commands(self, message):
         if not self.serial.is_open:
             self.reconnect()
@@ -44,6 +52,7 @@ class Serial_communicator():
                 break
             except:
                 print('Cannot connect to serial port')
+                time.sleep(0.5)
         return serial_port
     
     def reconnect(self):
@@ -52,7 +61,6 @@ class Serial_communicator():
         self.serial = self.connect_to_serial_port()
         while not self.is_ready():
             time.sleep(0.1)
-
 
 def main():
     serial_com = Serial_communicator()
@@ -63,6 +71,9 @@ def main():
         client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
         client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         #client_socket.setblocking(False)
+        print(serial_com.check_connection())
+        if not serial_com.check_connection():
+            exit()
 
         try:
             client_socket.connect(('localhost', 65432))  # Connect to the producer
