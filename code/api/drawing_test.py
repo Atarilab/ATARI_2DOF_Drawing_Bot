@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from drawing_bot_api import Drawing_Bot
 from drawing_bot_api import shapes
 
