@@ -38,6 +38,7 @@ drawing_bot.add_shape(shapes.Line([20, 80], [40, 120]))
 ```
 
 ### Point
+TODO
 
 ### Line
 To draw a line use `shapes.Line(start_point, end_point)´
