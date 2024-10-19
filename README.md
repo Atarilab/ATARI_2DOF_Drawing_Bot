@@ -1,6 +1,6 @@
 # MIRMI_2DOF_Drawing_Bot
  
-This respository contains all the CAD files, firmware and API to build and use the 2 DOF drawing robot by MIRMI lab.
+This respository contains all the firmware and API to program and interface with the 2 DOF drawing robot by MIRMI lab.
 
 # API
 Use the API to interface with the drawing robot.
