@@ -33,7 +33,7 @@ drawing_bot = Drawing_bot(unit='m', speed=400)
 ## Add shapes or move
 To create a program sequence you add shapes to your instance of the Drawing_bot class.
 ```
-# example
+# example (in millimeters)
 drawing_bot.add_shape(shapes.Line([20, 80], [40, 120]))
 ```
 
@@ -45,9 +45,34 @@ Parameters:
 - start_point: Defines where the line should start
 - end_point: Defines where the line should end
 ```
-# example
+# example (in millimeters)
 shapes.Line([20, 80], [40, 120])
 ```
+
+### Circle
+To draw a circle use `shapes.Circle(center_point, radius)
+Parameters:
+- center_point: Defines the center of the circle
+- radius: Defines the radius of the circle
+```
+# example (in millimeters)
+shapes.Circle([0, 100], 20)
+```
+
+### Partial Circle
+To draw a circle that's not fully completed use `shapes.Partial_circle(start_point, end_point, radius, direction)
+Parameters:
+- start_point: Defines the start point of the partial circle
+- end_point: Defines the end point of the partial circle
+- radius: Defines the radius of the partial circle
+- direction: Defines wether the partial circle should be drawn clockwise (`direction=1`) or anti-clockwise (`direction=-1`)
+optional:
+- big_angle: Defines whether the smaller (`big_angle=False`) or bigger (`big_angle=True`) part of the partial circle is drawn
+```
+# example (in millimeters9
+shapes.Partial_circle([-30, 100], [30, 100], 40, 1, big_angle=True)
+```
+
 
 
 
