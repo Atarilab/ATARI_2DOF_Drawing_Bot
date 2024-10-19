@@ -30,7 +30,7 @@ Parameters:
 drawing_bot = Drawing_bot(unit='m', speed=400)
 ```
 
-## Add shapes or move
+## Add shapes
 To create a program sequence you add shapes to your instance of the Drawing_bot class.
 ```
 # example (in millimeters)
@@ -69,9 +69,21 @@ Parameters:
 optional:
 - big_angle: Defines whether the smaller (`big_angle=False`) or bigger (`big_angle=True`) part of the partial circle is drawn
 ```
-# example (in millimeters9
+# example (in millimeters)
 shapes.Partial_circle([-30, 100], [30, 100], 40, 1, big_angle=True)
 ```
+
+## Plot drawing
+To see what your program sequence looks like before sending it to the drawing robot you can createe a plot of the drawing.
+For this use:
+```
+drawing_bot.plot()
+```
+Optional parameters:
+- resolution: Defines how many points per unit are drawn to create the plot (default: 2)
+- blocking: Defines wether program flow stops (`blocking=True`) or continues (`blocking=False`); default: `True`
+
+## Send commands to robot
 
 
 
