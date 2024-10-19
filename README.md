@@ -94,7 +94,7 @@ Optional parameters:
 
 ## Force reset
 In case the execution of the program code is causing problems because the serial connection to the robot isn't working, you can use `drawing_bot.hard_reset()` to reset the whole system and re-initialise the serial connection.\
-You can call this function before every program exection but forcing a reset will lead to the robot redoing it's zeroing and initialisation routine which can be annoying. So it is recommended to only use this function if problems arrise.
+You can call this function before every program execution but forcing a reset will lead to the robot redoing it's zeroing and initialisation routine which can be annoying. So it is recommended to only use this function if problems arrise.
 
 
 
