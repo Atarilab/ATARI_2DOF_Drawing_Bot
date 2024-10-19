@@ -74,8 +74,7 @@ shapes.Partial_circle([-30, 100], [30, 100], 40, 1, big_angle=True)
 ```
 
 ## Plot drawing
-To see what your program sequence looks like before sending it to the drawing robot you can createe a plot of the drawing.
-For this use:
+To see what your program sequence looks like before sending it to the drawing robot you can create a plot of the drawing.
 ```
 drawing_bot.plot()
 ```
@@ -84,6 +83,18 @@ Optional parameters:
 - blocking: Defines wether program flow stops (`blocking=True`) or continues (`blocking=False`); default: `True`
 
 ## Send commands to robot
+To send the whole program sequence as commands to the robot use
+```
+drawing_bot.execute()
+```
+Optional parameters:
+- promting: If set to `True` the user will get a promt to confirm the execution of the program before it is send to the robot. Default: `True`
+- clear_buffer: If set to `True` the program sequence will be erased from the buffer of the instance of the Drawing_bot class. Default: `True`
+
+## Force reset
+In case the execution of the program code is causing problems because the serial connection to the robot isn't working, you can use `drawing_bot.hard_reset()` to reset the whole system and re-initialise the serial connection.\
+You can call this function before every program exection but forcing a reset will lead to the robot redoing it's zeroing and initialisation routine which can be annoying. So it is recommended to only use this function if problems arrise.
+
 
 
 
