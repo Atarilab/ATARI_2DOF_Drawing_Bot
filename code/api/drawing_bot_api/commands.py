@@ -130,13 +130,8 @@ class Drawing_Bot:
         
         plt.show()
 
-    def execute(self, promting=True): # time defines how long the drawing process should take
+    def execute(self, promting=True, clear_buffer=False): # time defines how long the drawing process should take
         serial_handler = Serial_handler()
-
-        if promting:
-            answer = input('Do you want to continue with this drawing? (y/n)\n')
-            if answer != 'y':
-                return 1
 
         for shape in self.shapes:
             __duration = (shape.circumference / self.speed) # in seconds
@@ -161,17 +156,16 @@ class Drawing_Bot:
 
         self.add_position(self.shapes[-1].get_point(1), serial_handler=serial_handler) # Add last point 
 
-        self.shapes.clear()
-        serial_handler.send_buffer()
+        if clear_buffer:
+            self.shapes.clear()
+        
+        serial_handler.send_buffer(promting)
         plt.show()
 
-    def restart(self):
-        try:
-            message = f'R'
-            self.serial.write(message.encode('utf-8'))
-            self.serial.close()
-        except:
-            self.error_handler(ErrorCode.COMMUNICATION_ERROR, "Serial connection failed.")
+    def hard_reset(self):
+        serial_handler = Serial_handler()
+        serial_handler.kill_serial_script()
+        serial_handler.start_serial_script()
 
     def millis(self):
         return time.time()*1000

@@ -29,15 +29,24 @@ def heart():
     drawing_bot.add_shape(shapes.Line([0, 75], [40, 110]))
     drawing_bot.add_shape(shapes.Partial_circle([40, 110], [0, 135], 25, 1, big_angle=True))
 
-def partial_circle():
-    drawing_bot.add_shape(shapes.Partial_circle([0, 120], [0, 80], 30, -1, big_angle=True))
+def square(width, center):
+    side = width/2
+    drawing_bot.add_shape(shapes.Line([center[0]-side, center[1]+side], [center[0]+side, center[1]+side]))
+    drawing_bot.add_shape(shapes.Line([center[0]+side, center[1]+side], [center[0]+side, center[1]-side]))
+    drawing_bot.add_shape(shapes.Line([center[0]+side, center[1]-side], [center[0]-side, center[1]-side]))
+    drawing_bot.add_shape(shapes.Line([center[0]-side, center[1]-side], [center[0]-side, center[1]+side]))
 
 def main():
+    #drawing_bot.hard_reset()
+    for _ in range(5):
+        heart()
 
-    #limits_test()
-    heart()
-    #partial_circle()
-    drawing_bot.plot(blocking=False)
-    drawing_bot.execute(promting=False)
+    #square(30, [0, 110])
+    #square(40, [0, 110])
+    #square(50, [0, 110])
+    #square(60, [0, 110])
+
+    drawing_bot.plot(blocking=True)
+    drawing_bot.execute(promting=True, clear_buffer=False)
 
 main()

@@ -72,9 +72,9 @@ float find_zero_angle(FOCMotor* motor, int direction) {
     motor->loopFOC();
     motor->move();
 
-    if ( fabs(motor->shaft_velocity) < 0.1) {
+    if ( fabs(motor->shaft_velocity) < 2) {
       if (millis()-timer > 100) {
-        if (direction+1) zero_angle = motor->shaft_angle+0.3;
+        if (direction+1) zero_angle = motor->shaft_angle + 0.3;
         else zero_angle = motor->shaft_angle - 9.42;
         break;
       }
@@ -92,8 +92,8 @@ float find_zero_angle(FOCMotor* motor, int direction) {
     motor->loopFOC();
     motor->move();
 
-    if (millis() - timer > 500) {
-      if (fabs(motor->shaft_velocity) < 0.02) break;
+    if ((millis() - timer) > 500) {
+      if (fabs(motor->shaft_velocity) < 2) break;
     }
   }
 
@@ -151,31 +151,33 @@ void setup() {
 
   // contoller configuration based on the control type
   motorLeft.PID_velocity.P = 0.01;
-  motorLeft.PID_velocity.I = 0.05;
+  motorLeft.PID_velocity.I = 0.0;
   motorLeft.PID_velocity.D = 0.0;
-  motorLeft.P_angle.P = 50;
+  motorLeft.P_angle.P = 100;
+  motorLeft.P_angle.I = 0.0;
+  motorLeft.P_angle.D = 0.4;
 
   motorRight.PID_velocity.P = 0.01;
-  motorRight.PID_velocity.I = 0.05;
+  motorRight.PID_velocity.I = 0.0;
   motorRight.PID_velocity.D = 0.0;
-  motorRight.P_angle.P = 50;
+  motorRight.P_angle.P = 100;
+  motorRight.P_angle.I = 0.0;
+  motorRight.P_angle.D = 0.4;
+
 
   // default voltage_power_supply
-  //motorLeft.voltage_limit = 12;
-  //motorRight.voltage_limit = 12;
+  motorLeft.voltage_limit = 12;
+  motorRight.voltage_limit = 12;
 
   // velocity low pass filtering time constant
-  //motorLeft.LPF_velocity.Tf = 2;
-  //motorLeft.LPF_angle.Tf = 0.1;
-  //motorRight.LPF_velocity.Tf = 2;
-  //motorRight.LPF_velocity.Tf = 0.1;
+  //motorLeft.LPF_velocity.Tf = 0.05;
+  motorLeft.LPF_angle.Tf = 0.02;
+  //motorRight.LPF_velocity.Tf = 0.05;
+  motorRight.LPF_angle.Tf = 0.02;
 
-  // angle loop controller
-  //motorLeft.P_angle.P = 20;
-  //motorRight.P_angle.P = 20;
   // angle loop velocity limit
-  motorLeft.velocity_limit = 20;
-  motorRight.velocity_limit = 20;
+  motorLeft.velocity_limit = 30;
+  motorRight.velocity_limit = 30;
 
   // comment out if not needed
   /*

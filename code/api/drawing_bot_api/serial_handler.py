@@ -80,9 +80,18 @@ class Serial_handler:
     def kill_serial_script(self):
         self.check_serial_script_running(kill=True)
 
-    def send_buffer(self):
+    def send_buffer(self, promting):
         self.__init_connection()
         __time = self.millis()
+
+        self.conn.sendall(str(self.buffer[0]).encode('utf-8'))
+        time.sleep(0.5)
+
+        if promting:
+            answer = input('Do you want to continue with this drawing? (y/n)\n')
+            if answer != 'y':
+                self.buffer.clear()
+                return 1
 
         for message in self.buffer:
             try:

@@ -66,6 +66,7 @@ class Serial_communicator():
 
 def main():
     serial_com = Serial_communicator()
+    watchdog = time.time()
 
     while True:
         # Create a TCP/IP socket
@@ -76,6 +77,9 @@ def main():
         print(serial_com.check_connection())
         if not serial_com.check_connection():
             exit()
+
+        if (time.time() - watchdog) > 3600:
+            exit(0)
 
         try:
             client_socket.connect(('localhost', 65432))  # Connect to the producer
@@ -89,6 +93,7 @@ def main():
                     if not data:
                         print('Closing socket connection.')
                         client_socket.close()
+                        watchdog = time.time()
                         break  # Exit the loop if no data is received
 
                     # Send message; reconnects if serial connections fails until it works
