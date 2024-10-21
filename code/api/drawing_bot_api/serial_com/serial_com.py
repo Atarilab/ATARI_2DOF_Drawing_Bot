@@ -32,10 +32,15 @@ class Serial_communicator():
         if not self.serial.is_open:
             self.serial.open()
 
+        self.serial.write(f'I\n'.encode('utf-8'))
+        time.sleep(0.1)
+
         buffer = []
         while self.serial.in_waiting:
             buffer.append(self.serial.read(1).decode('utf-8'))
         joined_list = ''.join(buffer)
+
+        print(joined_list)
 
         return 'RDY' in joined_list
 
@@ -69,17 +74,19 @@ def main():
     watchdog = time.time()
 
     while True:
+
+        if (time.time() - watchdog) > 3600:
+            exit(0)
+    
         # Create a TCP/IP socket
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
         client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         #client_socket.setblocking(False)
         print(serial_com.check_connection())
+        
         if not serial_com.check_connection():
             exit()
-
-        if (time.time() - watchdog) > 3600:
-            exit(0)
 
         try:
             client_socket.connect(('localhost', 65432))  # Connect to the producer

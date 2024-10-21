@@ -78,7 +78,8 @@ class Serial_handler:
         #return process
 
     def kill_serial_script(self):
-        self.check_serial_script_running(kill=True)
+        while self.check_serial_script_running(kill=True):
+            time.sleep(0.3)
 
     def send_buffer(self, promting):
         self.__init_connection()

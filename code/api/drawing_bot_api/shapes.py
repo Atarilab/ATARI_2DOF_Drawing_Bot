@@ -25,6 +25,7 @@ class Circle:
         self.radius = radius
         self.circumference = 2 * pi * self.radius
         self.start_point = [self.center_point[0]+self.radius, self.center_point[1]]
+        self.end_point = self.start_point
 
     def get_point(self, t):
         x = cos(2 * pi * t) * self.radius + self.center_point[0]

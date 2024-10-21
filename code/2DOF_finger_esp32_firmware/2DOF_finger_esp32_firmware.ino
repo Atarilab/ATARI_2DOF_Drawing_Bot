@@ -41,6 +41,8 @@ BLDCDriver3PWM driverRight = BLDCDriver3PWM(2, 0, 4, 16);
 MagneticSensorI2C encoderLeft = MagneticSensorI2C(AS5600_I2C);
 MagneticSensorI2C encoderRight = MagneticSensorI2C(AS5600_I2C);
 
+int system_is_ready = 0;
+
 // commander communication instance
 Commander command = Commander(Serial);
 void doMotionLeft(char* cmd){ command.motion(&motorLeft, cmd); }
@@ -52,11 +54,10 @@ void restart(char* cmd){
   ESP.restart();
 }
 
-void send_ready_statement() {
-  static long int time = millis();
-  if ((millis() - time) > READY_STATMENT_WAIT_TIME) { 
+void send_ready_statement(char* cmd) {
+  Serial.println("Checking status...");
+  if (system_is_ready) {
     Serial.println("RDY"); 
-    time = millis();
   }
 }
 
@@ -150,14 +151,14 @@ void setup() {
   motorRight.controller = MotionControlType::angle;
 
   // contoller configuration based on the control type
-  motorLeft.PID_velocity.P = 0.01;
+  motorLeft.PID_velocity.P = 0.008;
   motorLeft.PID_velocity.I = 0.0;
   motorLeft.PID_velocity.D = 0.0;
   motorLeft.P_angle.P = 100;
   motorLeft.P_angle.I = 0.0;
   motorLeft.P_angle.D = 0.4;
 
-  motorRight.PID_velocity.P = 0.01;
+  motorRight.PID_velocity.P = 0.008;
   motorRight.PID_velocity.I = 0.0;
   motorRight.PID_velocity.D = 0.0;
   motorRight.P_angle.P = 100;
@@ -176,8 +177,8 @@ void setup() {
   motorRight.LPF_angle.Tf = 0.02;
 
   // angle loop velocity limit
-  motorLeft.velocity_limit = 30;
-  motorRight.velocity_limit = 30;
+  motorLeft.velocity_limit = 25;
+  motorRight.velocity_limit = 25;
 
   // comment out if not needed
   /*
@@ -206,9 +207,9 @@ void setup() {
   // subscribe motor to the commander
   command.add('W', doMotionLeft, "motion control");  // "West" - "Left" Motor
   command.add('E', doMotionRight, "motion control"); // "East" - "Right" Motor
-  command.add('C', onPid, "my pid");
+  command.add('C', onPid, "pid");
   command.add('R', restart, "restart");
-  // command.add('M', doMotor, "motor");
+  command.add('I', send_ready_statement, "ready_rtn");
 
   // set the inital target value
   motorLeft.target =  4.71;
@@ -217,9 +218,7 @@ void setup() {
   // Run user commands to configure and the motor (find the full command list in docs.simplefoc.com)
   Serial.println("Motor ready.");
 
-  send_ready_statement();
-  delay(2000);
-  send_ready_statement();
+  system_is_ready = 1;
 }
 
 
@@ -257,8 +256,6 @@ void loop() {
 
     // user communication
     command.run();
-
-    //send_ready_statement();
 
   #endif
 }
