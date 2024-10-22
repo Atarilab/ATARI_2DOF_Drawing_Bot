@@ -68,7 +68,7 @@ Parameters:
 - start_point: Defines the start point of the partial circle
 - end_point: Defines the end point of the partial circle
 - radius: Defines the radius of the partial circle
-- direction: Defines wether the partial circle should be drawn clockwise (`direction=1`) or anti-clockwise (`direction=-1`)
+- direction: Defines wether the partial circle should be drawn anti-clockwise (`direction=1`) or clockwise (`direction=-1`)
 optional:
 - big_angle: Defines whether the smaller (`big_angle=False`) or bigger (`big_angle=True`) part of the partial circle is drawn. Default: `False`
 ```
