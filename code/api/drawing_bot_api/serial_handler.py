@@ -86,6 +86,7 @@ class Serial_handler:
         __time = self.millis()
 
         self.conn.sendall(str(self.buffer[0]).encode('utf-8'))
+        self.conn.sendall(str(self.buffer[1]).encode('utf-8'))
         time.sleep(0.5)
 
         if promting:
