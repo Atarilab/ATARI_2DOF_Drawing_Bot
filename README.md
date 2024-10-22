@@ -2,6 +2,8 @@
  
 This respository contains all the firmware and API to program and interface with the 2 DOF drawing robot by MIRMI lab.
 
+GO HERE FOR THE HARDWARE: [ATARI_2DOF_drawing_bot_hardware](https://github.com/Atarilab/ATARI_2DOF_drawing_bot_hardware)
+
 # API
 Use the API to interface with the drawing robot.
 
