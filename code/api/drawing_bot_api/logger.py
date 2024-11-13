@@ -15,6 +15,7 @@ class Error_handler:
 class ErrorCode:
     DOMAIN_ERROR = 1
     COMMUNICATION_ERROR = 2
+    NO_SHAPES_ERROR = 3
 
 class Log:
     def __init__(self, verbose):

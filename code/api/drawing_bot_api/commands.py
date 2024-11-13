@@ -79,6 +79,11 @@ class Drawing_Bot:
         shapes.Partial_circle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
 
     def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION):
+        
+        if not self.shapes:
+            self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
+            return 1
+        
         _, ax = plt.subplots()
         ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
         ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
@@ -130,7 +135,12 @@ class Drawing_Bot:
         
         plt.show()
 
-    def execute(self, promting=True, clear_buffer=False): # time defines how long the drawing process should take
+    def execute(self, promting=True, clear_buffer=True): # time defines how long the drawing process should take
+
+        if not self.shapes:
+            self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
+            return 1
+        
         serial_handler = Serial_handler()
 
         for shape in self.shapes:
