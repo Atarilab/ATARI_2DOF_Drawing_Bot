@@ -4,6 +4,7 @@ import os
 import psutil
 import subprocess
 from drawing_bot_api.config import *
+import platform
 
 class Serial_handler:
 
@@ -60,11 +61,19 @@ class Serial_handler:
 
             try:
                 # Check if the process is a Python process and contains the script name
-                if 'Python' in proc.info['name'] and proc_name in proc.info['cmdline']:
-                    #print(f"Script {proc_name} is running with PID {proc.info['pid']}")
-                    if kill:
-                        proc.terminate()
-                    return True
+                if platform.system() == 'Darwin':
+                    if 'Python' in proc.info['name'] and proc_name in proc.info['cmdline']:
+                        #print(f"Script {proc_name} is running with PID {proc.info['pid']}")
+                        if kill:
+                            proc.terminate()
+                        return True
+                    
+                elif platform.system() == 'Linux':
+                    if proc_name in proc.info['name']:
+                        #print(f"Script {proc_name} is running with PID {proc.info['pid']}")
+                        if kill:
+                            proc.terminate()
+                        return True
                 
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
@@ -79,7 +88,7 @@ class Serial_handler:
 
     def kill_serial_script(self):
         while self.check_serial_script_running(kill=True):
-            time.sleep(0.3)
+            time.sleep(0.1)
 
     def send_buffer(self, promting):
         self.__init_connection()
@@ -122,7 +131,7 @@ if __name__ == '__main__':
     serial_handler = Serial_handler()
     #while(serial_handler.check_serial_script_running()):
         #serial_handler.kill_serial_script()
-    #serial_handler.start_serial_script()
-    while(1):
+    serial_handler.start_serial_script()
+    #while(1):
         #serial_handler.kill_serial_script()
-        serial_handler('yes yes')
+        #serial_handler('test')

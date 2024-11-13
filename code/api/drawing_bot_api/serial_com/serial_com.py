@@ -5,14 +5,17 @@ from config import *
 import time
 import setproctitle
 import socket
+import platform
 
 setproctitle.setproctitle('drawing_bot_serial_com')
 
 class Serial_communicator():
     def __init__(self):
         self.serial = self.connect_to_serial_port()
+        print('Waiting until drawing bot is ready...')
         while not self.is_ready():
             time.sleep(0.1)
+        print('Drawing bot is ready.')
 
     def check_connection(self):
         try:
@@ -40,8 +43,6 @@ class Serial_communicator():
             buffer.append(self.serial.read(1).decode('utf-8'))
         joined_list = ''.join(buffer)
 
-        print(joined_list)
-
         return 'RDY' in joined_list
 
     def restart(self):
@@ -53,10 +54,18 @@ class Serial_communicator():
         serial_port = None
         while True:
             try:
-                print(f'Connecting to serial_port /dev/cu.usbserial-0001')
-                serial_port = serial.Serial('/dev/cu.usbserial-0001', BAUD, write_timeout=WRITE_TIMEOUT)
+                print(f'Connecting to serial_port...')
+
+                if platform.system() == 'Darwin':
+                    print('AHA')
+                    serial_port = serial.Serial('/dev/cu.usbserial-0001', BAUD, write_timeout=WRITE_TIMEOUT)
+
+                elif platform.system() == 'Linux':
+                    serial_port = serial.Serial('/dev/ttyUSB0', BAUD, write_timeout=WRITE_TIMEOUT)
+
                 print(f'Serial port connected.')
                 break
+            
             except:
                 print('Cannot connect to serial port')
                 time.sleep(0.5)
@@ -83,7 +92,7 @@ def main():
         client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
         client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         #client_socket.setblocking(False)
-        print(serial_com.check_connection())
+        #print(serial_com.check_connection())
         
         if not serial_com.check_connection():
             exit()
