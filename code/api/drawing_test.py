@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-from drawing_bot_api import Drawing_Bot
+from drawing_bot_api import DrawingBot
 from drawing_bot_api.shapes import *
 
 # Here you can adjust the speed of the robot and change the unit if you prefer another: meters (m), centimeters (cm), millimeters (mm)
-drawing_bot = Drawing_Bot(unit='mm', speed=200)
+drawing_bot = DrawingBot(unit='mm', speed=200)
 
 #################################
 #             DOMAIN            #
@@ -30,10 +30,10 @@ drawing_bot = Drawing_Bot(unit='mm', speed=200)
 
 # EXAMPLE FUNCTIONS:
 def heart():
-    drawing_bot.add_shape(Partial_circle([0, 135], [-40, 110], 25, 1, big_angle=True))
+    drawing_bot.add_shape(PartialCircle([0, 135], [-40, 110], 25, 1, big_angle=True))
     drawing_bot.add_shape(Line([-40, 110], [0, 75]))
     drawing_bot.add_shape(Line([0, 75], [40, 110]))
-    drawing_bot.add_shape(Partial_circle([40, 110], [0, 135], 25, 1, big_angle=True))
+    drawing_bot.add_shape(PartialCircle([40, 110], [0, 135], 25, 1, big_angle=True))
 
 def square(width, center):
     side = width/2
