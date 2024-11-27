@@ -38,7 +38,7 @@ class Circle:
             point = self.get_point(t/sample_number)
             plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color)
 
-class Partial_circle:
+class PartialCircle:
     def __init__(self, start_point, end_point, radius, direction, big_angle=False):
         # direction: clockwise or anti-clockwise
         self.start_point = start_point
@@ -84,7 +84,7 @@ class Partial_circle:
             plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=color, markerfacecolor=color)
 
 if __name__ == '__main__':
-    circ = Partial_circle([1, 0], [3, 8], 5, 1)
+    circ = PartialCircle([1, 0], [3, 8], 5, 1)
     line = Line([0, 1], [3,6])
     circ2 = Circle([4, 4], 3)
 

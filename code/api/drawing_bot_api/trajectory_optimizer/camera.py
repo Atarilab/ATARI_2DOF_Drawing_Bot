@@ -7,6 +7,7 @@ class Camera:
 
     def __call__(self):
         cap = cv2.VideoCapture(0) # video capture source camera (Here webcam of laptop) 
+        time.sleep(3)
         _,image = cap.read() # return a single frame in variable `frame`
         self.image_counter += 1
         cap.release()

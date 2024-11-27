@@ -1,17 +1,14 @@
 from drawing_bot_api.delta_utils import plt
-import matplotlib.patches as mpatches
-from drawing_bot_api.delta_utils import plot_delta
 from drawing_bot_api.delta_utils import ik_delta
-from drawing_bot_api.delta_utils import plot_box
-from math import cos, sin, pi
 import time
-import serial
 from drawing_bot_api.logger import Log, Error_handler, ErrorCode
 from drawing_bot_api import shapes
 from drawing_bot_api.config import *
 from drawing_bot_api.serial_handler import Serial_handler
+import numpy as np
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-class Drawing_Bot:
+class DrawingBot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
         # unit: Define which unit the user is using
         # speed is measured in unit/s
@@ -76,19 +73,20 @@ class Drawing_Bot:
         shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[1]).plot(color=DOMAIN_COLOR, resolution=resolution)
         shapes.Line(DOMAIN_BOX[2], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
         shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
-        shapes.Partial_circle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
+        shapes.PartialCircle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
 
-    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION):
+    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False):
         
         if not self.shapes:
             self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
             return 1
         
-        _, ax = plt.subplots()
+        fig, ax = plt.subplots()
         ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
         ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
 
-        self.__plot_domain(resolution=resolution)
+        if not training_mode:
+            self.__plot_domain(resolution=resolution)
 
         if not self.shapes:
             plt.show(block=blocking)
@@ -111,10 +109,21 @@ class Drawing_Bot:
         plt.plot(0, 0, color=SHAPE_COLOR, label='User defined drawings')
         plt.plot(0, 0, color=DOMAIN_COLOR, label='Domain')
 
-        #plt.legend(['Start point', 'Bridge lines', 'User defined drawings', 'End point'], loc="lower right")
-        plt.legend(bbox_to_anchor=(1, 1.15), ncol=3)
+        plt.gca().set_aspect('equal', adjustable='box')
 
-        plt.show(block=blocking)
+        if not training_mode:
+            plt.legend(bbox_to_anchor=(1, 1.15), ncol=3)    
+            plt.show(block=blocking)
+        else:
+            # Retrieve a view on the renderer buffer
+            plt.figure(figsize=(6, 4), dpi=100)
+            canvas = FigureCanvasAgg(fig)
+            canvas.draw()
+            buf = canvas.buffer_rgba()
+            # convert to a NumPy array
+            image = np.asarray(buf)
+            image = image[120:850, 165:1145, 0:3]
+            return image
 
     def plot_sampled_domain(self):
         fig, ax = plt.subplots()
@@ -134,6 +143,16 @@ class Drawing_Bot:
             x_val = -125
         
         plt.show()
+
+    def move_to_point(self, point, promt_after=False):
+        serial_handler = Serial_handler()
+        self.add_position(point, serial_handler=serial_handler)
+        serial_handler.send_buffer(False)
+
+        if promt_after:
+            answer = input('Enter anything to continue.\n')
+            if answer:
+                return 0
 
     def execute(self, promting=True, clear_buffer=True): # time defines how long the drawing process should take
 
@@ -170,7 +189,7 @@ class Drawing_Bot:
             self.shapes.clear()
         
         serial_handler.send_buffer(promting)
-        plt.show()
+        #plt.show()
 
     def hard_reset(self):
         serial_handler = Serial_handler()
@@ -181,6 +200,6 @@ class Drawing_Bot:
         return time.time()*1000
     
 if __name__ == '__main__':
-    drawing_bot = Drawing_Bot()
+    drawing_bot = DrawingBot()
     drawing_bot.add_shape(shapes.Line([0, 0], [1, 5]))
     drawing_bot.plot()

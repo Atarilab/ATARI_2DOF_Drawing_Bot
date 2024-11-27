@@ -57,8 +57,7 @@ class Serial_communicator():
                 print(f'Connecting to serial_port...')
 
                 if platform.system() == 'Darwin':
-                    print('AHA')
-                    serial_port = serial.Serial('/dev/cu.usbserial-0001', BAUD, write_timeout=WRITE_TIMEOUT)
+                    serial_port = serial.Serial(USB_ID, BAUD, write_timeout=WRITE_TIMEOUT)
 
                 elif platform.system() == 'Linux':
                     serial_port = serial.Serial('/dev/ttyUSB0', BAUD, write_timeout=WRITE_TIMEOUT)
