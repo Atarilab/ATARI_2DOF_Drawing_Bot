@@ -75,7 +75,7 @@ class DrawingBot:
         shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
         shapes.PartialCircle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
 
-    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False):
+    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, points=None):
         
         if not self.shapes:
             self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
@@ -88,23 +88,30 @@ class DrawingBot:
         if not training_mode:
             self.__plot_domain(resolution=resolution)
 
-        if not self.shapes:
-            plt.show(block=blocking)
-            return 0
+        if points is None:
+            if not self.shapes:
+                plt.show(block=blocking)
+                return 0
 
-        plt.plot(self.shapes[0].start_point[0], self.shapes[0].start_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
+            plt.plot(self.shapes[0].start_point[0], self.shapes[0].start_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
 
-        previous_shape = shapes.Line([0, 0], self.shapes[0].start_point)
+            previous_shape = shapes.Line([0, 0], self.shapes[0].start_point)
 
-        for shape in self.shapes:
-            if shape.start_point != previous_shape.end_point:
-                __bridge_line = shapes.Line(previous_shape.end_point, shape.start_point)
-                __bridge_line.plot(color=BRIDGE_COLOR, resolution=resolution)
+            for shape in self.shapes:
+                if shape.start_point != previous_shape.end_point:
+                    __bridge_line = shapes.Line(previous_shape.end_point, shape.start_point)
+                    __bridge_line.plot(color=BRIDGE_COLOR, resolution=resolution)
 
-            shape.plot(resolution=resolution)
-            previous_shape = shape
+                shape.plot(resolution=resolution)
+                previous_shape = shape
 
-        plt.plot(previous_shape.end_point[0], previous_shape.end_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
+            plt.plot(previous_shape.end_point[0], previous_shape.end_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
+
+        else:
+            plt.plot(self.shapes[0].start_point[0], self.shapes[0].start_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
+            for point in points:
+                plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR, label=None)
+
         plt.plot(0, 0, color=BRIDGE_COLOR, label='Bridging lines')
         plt.plot(0, 0, color=SHAPE_COLOR, label='User defined drawings')
         plt.plot(0, 0, color=DOMAIN_COLOR, label='Domain')
@@ -154,7 +161,23 @@ class DrawingBot:
             if answer:
                 return 0
 
-    def execute(self, promting=True, clear_buffer=True): # time defines how long the drawing process should take
+    def _get_points(self, shape):
+        __duration = (shape.circumference / self.speed) # in seconds
+        __number_of_points = int(__duration / SERIAL_DELAY)
+        _points = []
+
+        for i in range(__number_of_points):
+            _points.append(shape.get_point(i * (1/__number_of_points)))
+
+        return _points
+    
+    def _get_all_points(self):
+        _points = []
+        for shape in self.shapes:
+            _points.extend(self._get_points(shape))
+        return _points
+
+    def execute(self, promting=True, clear_buffer=True, points=None): # time defines how long the drawing process should take
 
         if not self.shapes:
             self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
@@ -162,26 +185,13 @@ class DrawingBot:
         
         serial_handler = Serial_handler()
 
-        for shape in self.shapes:
-            __duration = (shape.circumference / self.speed) # in seconds
-            __number_of_points = int(__duration / SERIAL_DELAY)
+        _points = points
 
-            for i in range(__number_of_points):
-                point = shape.get_point(i * (1/__number_of_points))
-                self.add_position(point, serial_handler=serial_handler)
+        if _points is None:
+            _points = self._get_all_points()
 
-            '''
-            while(self.busy):
-                __t = (self.millis() - __time) / __duration
-                if __t > 1:
-                    __t = 1
-
-                __target_position = shape.get_point(__t)
-                self.update_position(__target_position, serial_handler=serial_handler)
-
-                if self.millis() - __time >= __duration:
-                    self.busy = False
-            '''
+        for point in _points:
+            self.add_position(point, serial_handler=serial_handler)
 
         self.add_position(self.shapes[-1].get_point(1), serial_handler=serial_handler) # Add last point 
 

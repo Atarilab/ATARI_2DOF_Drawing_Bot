@@ -1,94 +1,108 @@
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.models import load_model
-import tensorflow as tf
 import numpy as np
-from config import *
+from drawing_bot_api.trajectory_optimizer.config import *
+from drawing_bot_api.config import PLOT_XLIM, PLOT_YLIM
 import os
-from image_processor import ImageProcessor
-from math import tanh, log
+from drawing_bot_api.trajectory_optimizer.image_processor import ImageProcessor
+from drawing_bot_api.logger import Log
 
-class OUActionNoise:
-    def __init__(self, mean, std_deviation, theta=0.15, dt=1e-2, x_initial=None):
-        self.theta = theta
-        self.mean = mean
-        self.std_dev = std_deviation
-        self.dt = dt
-        self.x_initial = x_initial
-        self.reset()
+# INPUT SPACE: 5 left angles + 5 right angles = 10
+# ACTION SPACE: 1 left angle + 1 right angle = 2
 
-    def __call__(self):
-        # Formula taken from https://www.wikipedia.org/wiki/Ornstein-Uhlenbeck_process
-        x = (
-            self.x_prev
-            + self.theta * (self.mean - self.x_prev) * self.dt
-            + self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)
-        )
-        # Store x into x_prev
-        # Makes next noise dependent on current one
-        self.x_prev = x
-        return x
-
-    def reset(self):
-        if self.x_initial is not None:
-            self.x_prev = self.x_initial
-        else:
-            self.x_prev = np.zeros_like(self.mean)
-
+#/Users/leon/.plaidml
+    
+class Step:
+    def __init__(self, state, action):
+        self.state = state
+        self.action = action
 
 class ReplayBuffer:
-    def __init__(self, buffer_size):
+    def __init__(self):
         self.buffer = []
-        self.buffer_size = buffer_size
 
-    def add(self, state, action, reward, next_state):
-        if len(self.buffer) >= self.buffer_size:
-            self.buffer.pop(0)
-        self.buffer.append((state, action, reward, next_state))
+    def __call__(self, step):
+        self.buffer.append(step)
 
-    def sample(self, batch_size):
-        indices = np.random.choice(len(self.buffer), batch_size)
-        return [self.buffer[idx] for idx in indices]
+    def clear(self):
+        self.buffer.clear()
 
 class Trainer:
     model = None
-    replay_buffers = []
+    replay_buffers = ReplayBuffer()
     image_processor = ImageProcessor()
-
+    log = Log(verbose=1)
 
     def __init__(self, model=None, **kwargs):
         if model == None:
             self.model = self.new_model(**kwargs)
+        elif model == 'ignore':
+            self.model = None
         else:
             self.model = self.load_model(model)
 
-    def get_joint_offset(self, input):
-        # this is the inference function
-        # Input: Trajectory
-        # Output: Adjusted trajectory
-
-        pass
+    def _normalize_trajectory(self, trajectory):
+        for point in trajectory:
+            point[0] = point[0] / PLOT_XLIM[1]
+            point[1] = point[1] / PLOT_YLIM[1]
 
     def adjust_trajectory(self, trajectory):
-        # Takes the trajectory and loops the predection cycle until all points have an offset
-        # Writes to buffer
-        replay_buffer = ReplayBuffer(len(trajectory))
-        pass
+        # trajectory has the form: [[x1, y1], [x2, y2], ... , [xn, yn]]
 
-    def teach(self, template_img):
+        self._normalize_trajectory(trajectory)
+        _batched_inputs = []
+
+        # iterating over all points
+        for _index in range(len(trajectory)):
+
+            _input = []
+            
+            # iterating over the last 10 points
+            for _pointer in range(_index-int(INPUT_DIM/2)+1, _index+1):
+                if _pointer < 0:
+                    _input.extend([0, 0])
+                else:
+                    _input.extend(trajectory[_pointer])
+    
+            _batched_inputs.append(_input)
+
+        _batched_inputs = np.array(_batched_inputs)
+        _offsets = self.model.predict(_batched_inputs, batch_size=1)
+        
+        return _offsets
+    
+    '''
+    def _adjust_trajectory(self, trajectory):
+        self._normalize_trajectory
+        trajectory = np.array(trajectory)
+        trajectory = trajectory.reshape(-1)
+        print(trajectory.shape)
+
+        _input = np.append(trajectory, np.zeros((2000-len(trajectory), 1)))
+        print(_input.shape)
+        _input = _input.reshape(1, -1)
+        _new_trajectory = self.model.predict(_input)
+        _new_trajectory.reshape(-1, 2)
+        return _new_trajectory
+    '''
+
+    def train(self, replay_buffer, reward):
         # Calculates reward and ajusts model based on data in replay buffer
         # Clears cache in the end
         # Update Actor
-        similarity = self.image_processor(template_img)
-        reward = log(similarity)
+        _states = []
+        _rewards = []
 
-        with tf.GradientTape() as tape:
-            actor_grads = tape.gradient(reward, self.model.trainable_variables)
-            actor_optimizer.apply_gradients(zip(actor_grads, actor.trainable_variables))
+        for step in replay_buffer.buffer:
+            _states.append(step.state)
+            _rewards.append(step.action * reward)
+        
+        self.model.fit(_states, _rewards, batchsize=len(replay_buffer.buffer))
 
-    def new_model(self, input_size=INPUT_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
+    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
         hidden_layer = Dense(hidden_layer_size, activation='relu', input_shape=(input_size,))
-        output_layer = Dense(1, activation='tanh') 
+        output_layer = Dense(ACTION_DIM, activation='tanh') 
 
         model = Sequential([hidden_layer, output_layer])
         model.compile( optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])

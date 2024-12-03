@@ -2,7 +2,7 @@ import serial
 import platform
 import time
 
-PORT = 'ARDUINO PORT' # STILL NEED TO ADD THIS PROPERLY
+PORT = '/dev/cu.usbmodem144101'
 BAUD = 9600
 WRITE_TIMEOUT = 5
 
@@ -12,7 +12,7 @@ class Wiper:
         self.baud = BAUD
         self.write_timeout = WRITE_TIMEOUT
 
-    def connect_to_serial_port(self):
+    def _connect_to_serial_port(self):
         serial_port = None
 
         while True:
@@ -20,8 +20,7 @@ class Wiper:
                 print(f'Connecting to serial_port...')
 
                 if platform.system() == 'Darwin':
-                    print('AHA')
-                    serial_port = serial.Serial('/dev/cu.usbserial-0001', self.baud, write_timeout=self.write_timeout)
+                    serial_port = serial.Serial(PORT, self.baud, write_timeout=self.write_timeout)
 
                 elif platform.system() == 'Linux':
                     serial_port = serial.Serial('/dev/ttyUSB0', self.baud, write_timeout=self.write_timeout)
@@ -35,9 +34,11 @@ class Wiper:
 
         return serial_port
     
-    def wipe(self):
-        serial_port = self.connect_to_serial_port()
+    def __call__(self):
+        serial_port = self._connect_to_serial_port()
         time.sleep(3)
         serial_port.close()
         
-    
+if __name__ == '__main__':
+    wiper = Wiper()
+    wiper()

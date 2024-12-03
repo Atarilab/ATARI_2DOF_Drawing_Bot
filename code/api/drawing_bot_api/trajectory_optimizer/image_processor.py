@@ -2,7 +2,7 @@ from drawing_bot_api.trajectory_optimizer.camera import Camera
 import cv2
 import os
 import numpy as np
-from skimage.metrics import structural_similarity as ssim
+from math import exp
 
 class ImageProcessor:
     def __init__(self):
@@ -11,7 +11,7 @@ class ImageProcessor:
 
     def save_image(self, image, directory, type):
         _script_dir = os.path.dirname(os.path.abspath(__file__))
-        _path = os.path.join(_script_dir, f'images/{directory}/{type}_{str(self._image_counter)}.png')
+        _path = os.path.join(_script_dir, f'images/{directory}/{str(self._image_counter)}_{type}.jpg')
         cv2.imwrite(_path, image)
         print(f'Saved {type} to {_path}')
     
@@ -31,12 +31,23 @@ class ImageProcessor:
         _inverted = cv2.bitwise_not(_black_and_white)
 
         return _inverted
-        
+    
+    def _normalization(self, value):
+        # modified sigmoid function
+        # since there are no negative values from shapeMatching the sigmoid is scaled and inverted
+        # So values close to 1 represent high similarity and values close to 0 represent low similarity
+        # Sensitivity is increased by scaling the calulated similarity measure by 30 before applying the normalzation
+        new_value = 3 - (4 / (1 + exp(-40*value)))
+        return new_value
 
-    def __call__(self, template):
+    def __call__(self, template, drawing=None):
         # retrieve both images
         _template = template
-        _drawing = self._camera()
+        _template = _template[:690, :]
+        _drawing = drawing
+        if not _drawing:
+            _drawing = self._camera()
+        _drawing = _drawing[10:600, 220:1060]
         self._image_counter += 1
 
         # save both images in original form
@@ -53,6 +64,7 @@ class ImageProcessor:
         self.save_image(_inv_drawing, 'simplified', 'drawing')
         self.save_image(_inv_template, 'simplified', 'template')
 
+        '''
         # get contours
         _contours_template, _ = cv2.findContours(_inv_template, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         _contours_drawing, _ = cv2.findContours(_inv_drawing, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -77,8 +89,11 @@ class ImageProcessor:
         cv2.drawContours(_inv_template, _contours_template, -1, (0, 0, 255), 1)
         self.save_image(_drawing, 'analysed', 'drawing')
         self.save_image(_inv_template, 'analysed', 'template')
+        '''
 
-        return similarity
+        similarity = cv2.matchShapes(_inv_drawing, _inv_template, cv2.CONTOURS_MATCH_I1,0)
+        print(f'similarity without sigmoid: {similarity}')
+        return self._normalization(similarity)
 
 
 if __name__ == '__main__':

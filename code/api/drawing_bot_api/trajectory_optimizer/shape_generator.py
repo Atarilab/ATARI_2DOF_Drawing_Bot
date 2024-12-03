@@ -7,16 +7,16 @@ from drawing_bot_api.logger import Log
 MIN_NUM_OF_SHAPES = 2
 MAX_NUM_OF_SHAPES = 6
 RESTING_POINT = [0, 40]
-START_POINT = [0, 80]
+START_POINT = [0, 100]
 
 MIN_CIRCLE_RADIUS = 10
 
-DOMAIN = [-70, 70, 70, 160] # left, right, bottom, top
+DOMAIN = [-70, 70, 90, 160] # left, right, bottom, top
 
 class ShapeGenerator:
     shapes = []
     num_of_shapes = 0
-    logger = Log(1)
+    logger = Log(0)
 
     def __call__(self):
         self.logger('Generating shapes...')
@@ -71,7 +71,6 @@ class ShapeGenerator:
         _shape = None
         _start_point = self.shapes[-1].end_point
         _end_point = [random.randint(DOMAIN[0], DOMAIN[1]), random.randint(DOMAIN[2], DOMAIN[3])]
-        print(f'END POINT: {_end_point}')
         _shape = Line(_start_point, _end_point)
         return _shape
     
@@ -79,8 +78,7 @@ class ShapeGenerator:
         for i in range(100):
             _point = shape.get_point(i/100)
 
-            if _point[1] < 70:
-                print(f'Too low')
+            if _point[1] < DOMAIN[2]:
                 return 1
             
             _point = [_point[0]/1000, _point[1]/1000]
@@ -88,6 +86,5 @@ class ShapeGenerator:
             try:
                 ik_delta(_point)
             except:
-                print(f'IK not possible')
                 return 1
         return 0
