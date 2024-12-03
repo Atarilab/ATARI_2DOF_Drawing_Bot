@@ -43,7 +43,7 @@ drawing_bot.add_shape(shapes.Line([20, 80], [40, 120]))
 TODO
 
 ### Line
-To draw a line use `shapes.Line(start_point, end_point)`
+To draw a line use `shapes.Line(start_point, end_point)` \
 Parameters:
 - start_point: Defines where the line should start
 - end_point: Defines where the line should end
@@ -53,7 +53,7 @@ shapes.Line([20, 80], [40, 120])
 ```
 
 ### Circle
-To draw a circle use `shapes.Circle(center_point, radius)`
+To draw a circle use `shapes.Circle(center_point, radius)` \
 Parameters:
 - center_point: Defines the center of the circle
 - radius: Defines the radius of the circle
@@ -63,17 +63,17 @@ shapes.Circle([0, 100], 20)
 ```
 
 ### Partial Circle
-To draw a circle that's not fully completed use `shapes.Partial_circle(start_point, end_point, radius, direction)`
+To draw a circle that's not fully completed use `shapes.Partial_circle(start_point, end_point, radius, direction)` \
 Parameters:
 - start_point: Defines the start point of the partial circle
 - end_point: Defines the end point of the partial circle
 - radius: Defines the radius of the partial circle
-- direction: Defines wether the partial circle should be drawn anti-clockwise (`direction=1`) or clockwise (`direction=-1`)
+- direction: Defines wether the partial circle should be drawn anti-clockwise (`direction=1`) or clockwise (`direction=-1`) \
 optional:
 - big_angle: Defines whether the smaller (`big_angle=False`) or bigger (`big_angle=True`) part of the partial circle is drawn. Default: `False`
 ```
 # example (in millimeters)
-shapes.Partial_circle([-30, 100], [30, 100], 40, 1, big_angle=True)
+shapes.PartialCircle([-30, 100], [30, 100], 40, 1, big_angle=True)
 ```
 
 ## Plot drawing
