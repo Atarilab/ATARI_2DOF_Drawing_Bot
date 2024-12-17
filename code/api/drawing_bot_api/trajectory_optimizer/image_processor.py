@@ -1,4 +1,5 @@
 from drawing_bot_api.trajectory_optimizer.camera import Camera
+from drawing_bot_api.logger import Log
 import cv2
 import os
 import numpy as np
@@ -8,14 +9,29 @@ class ImageProcessor:
     def __init__(self):
         self._camera = Camera()
         self._image_counter = 0
+        self.log = Log(0)
 
     def save_image(self, image, directory, type):
         _script_dir = os.path.dirname(os.path.abspath(__file__))
         _path = os.path.join(_script_dir, f'images/{directory}/{str(self._image_counter)}_{type}.jpg')
         cv2.imwrite(_path, image)
-        print(f'Saved {type} to {_path}')
+        self.log(f'Saved {type} to {_path}')
     
-    def simplify(self, image):
+    def _simplify_template(self, image):
+        # Enhance Contrast
+        _gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        #_clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+       # _enhanced_contrast = _clahe.apply(_gray)
+
+        # Convert to Black and White
+        _, _black_and_white = cv2.threshold(_gray, 0, 255, cv2.THRESH_BINARY)
+
+        # Invert
+        _inverted = cv2.bitwise_not(_black_and_white)
+
+        return _inverted
+    
+    def _simplify_drawing(self, image):
         # Blurring for noise reduction
         _blurred = cv2.GaussianBlur(image, (5, 5), 0)
 
@@ -32,22 +48,25 @@ class ImageProcessor:
 
         return _inverted
     
-    def _normalization(self, value):
+    def _normalize(self, value):
         # modified sigmoid function
         # since there are no negative values from shapeMatching the sigmoid is scaled and inverted
         # So values close to 1 represent high similarity and values close to 0 represent low similarity
-        # Sensitivity is increased by scaling the calulated similarity measure by 30 before applying the normalzation
-        new_value = 3 - (4 / (1 + exp(-40*value)))
+        # Sensitivity is increased by scaling the calulated similarity measure by 40 before applying the normalzation
+        new_value = 2 - (2 / (1 + exp(-40*value)))
         return new_value
 
     def __call__(self, template, drawing=None):
         # retrieve both images
         _template = template
-        _template = _template[:690, :]
+
         _drawing = drawing
-        if not _drawing:
+        if _drawing is None:
             _drawing = self._camera()
-        _drawing = _drawing[10:600, 220:1060]
+            _drawing = _drawing[10:600, 220:1060]
+
+            _template = _template[:690, :]
+
         self._image_counter += 1
 
         # save both images in original form
@@ -55,45 +74,18 @@ class ImageProcessor:
         self.save_image(_template, 'original', 'template')
 
         # turn to inverteed binary black and white image
-        _simpl_drawing = self.simplify(_drawing)
+        _simpl_drawing = self._simplify_template(_drawing)
         _grey_drawing = _simpl_drawing#cv2.cvtColor(_simpl_drawing, cv2.COLOR_BGR2GRAY)
         _, _inv_drawing = cv2.threshold(_grey_drawing, 127, 255, cv2.THRESH_BINARY)
-        _inv_template = self.simplify(_template)
+        _inv_template = self._simplify_template(_template)
 
         # save edited images
         self.save_image(_inv_drawing, 'simplified', 'drawing')
         self.save_image(_inv_template, 'simplified', 'template')
 
-        '''
-        # get contours
-        _contours_template, _ = cv2.findContours(_inv_template, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        _contours_drawing, _ = cv2.findContours(_inv_drawing, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-        # calc moments
-        _moments_template = cv2.moments(_contours_template[0])
-        _moments_drawing = cv2.moments(_contours_drawing[0])
-
-        # Calculate Hu Moments
-        _hu_moments_template = cv2.HuMoments(_moments_template).flatten()
-        _hu_moments_drawing = cv2.HuMoments(_moments_drawing).flatten()
-
-        _hu_moments_template = np.array(_hu_moments_template, dtype=np.float32)
-        _hu_moments_drawing = np.array(_hu_moments_drawing, dtype=np.float32)
-
-        # Compare using correlation
-        similarity = cv2.compareHist(_hu_moments_template, _hu_moments_drawing, cv2.HISTCMP_CHISQR)
-        print(f"Hu Moment Similarity: {similarity*100}")
-        
-        # save images with contours
-        cv2.drawContours(_drawing, _contours_drawing, -1, (0, 0, 255), 1)
-        cv2.drawContours(_inv_template, _contours_template, -1, (0, 0, 255), 1)
-        self.save_image(_drawing, 'analysed', 'drawing')
-        self.save_image(_inv_template, 'analysed', 'template')
-        '''
-
         similarity = cv2.matchShapes(_inv_drawing, _inv_template, cv2.CONTOURS_MATCH_I1,0)
-        print(f'similarity without sigmoid: {similarity}')
-        return self._normalization(similarity)
+        #print(f'similarity without sigmoid: {similarity}')
+        return self._normalize(similarity)
 
 
 if __name__ == '__main__':
@@ -108,7 +100,7 @@ if __name__ == '__main__':
     image1 = cv2.imread(_path_template)
     image2 = cv2.imread(_path_drawing)
 
-    invert2 = img_proc.simplify(image2)
+    invert2 = img_proc._simplify_drawing(image2)
     grey1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     _, binary1 = cv2.threshold(grey1, 127, 255, cv2.THRESH_BINARY)
     invert1 = cv2.bitwise_not(binary1)

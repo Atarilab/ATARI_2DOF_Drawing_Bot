@@ -77,10 +77,6 @@ class DrawingBot:
 
     def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, points=None):
         
-        if not self.shapes:
-            self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
-            return 1
-        
         fig, ax = plt.subplots()
         ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
         ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
@@ -90,8 +86,8 @@ class DrawingBot:
 
         if points is None:
             if not self.shapes:
-                plt.show(block=blocking)
-                return 0
+                self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
+                return 1
 
             plt.plot(self.shapes[0].start_point[0], self.shapes[0].start_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
 
@@ -108,9 +104,18 @@ class DrawingBot:
             plt.plot(previous_shape.end_point[0], previous_shape.end_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
 
         else:
-            plt.plot(self.shapes[0].start_point[0], self.shapes[0].start_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
+            plt.plot(points[0][0], points[0][1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
+            
+            _prev_point = None
             for point in points:
-                plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR, label=None)
+                if _prev_point is not None:
+                    _x = [_prev_point[0], point[0]]
+                    _y = [_prev_point[1], point[1]] 
+                    plt.plot(_x, _y, color=SHAPE_COLOR)
+                _prev_point = point
+                #plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR, label='Start point')
+            
+            plt.plot(points[-1][0], points[-1][1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
 
         plt.plot(0, 0, color=BRIDGE_COLOR, label='Bridging lines')
         plt.plot(0, 0, color=SHAPE_COLOR, label='User defined drawings')
@@ -129,7 +134,8 @@ class DrawingBot:
             buf = canvas.buffer_rgba()
             # convert to a NumPy array
             image = np.asarray(buf)
-            image = image[120:850, 165:1145, 0:3]
+            #image = image[120:850, 165:1145, 0:3] # old croping
+            image = image[70:410, 90:570]
             return image
 
     def plot_sampled_domain(self):
