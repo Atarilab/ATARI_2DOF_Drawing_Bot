@@ -3,17 +3,13 @@ from keras.layers import Dense
 from keras.models import load_model
 import keras
 import numpy as np
+import tensorflow as tf
 from drawing_bot_api.trajectory_optimizer.config import *
 from drawing_bot_api.config import PLOT_XLIM, PLOT_YLIM
 import os
 from drawing_bot_api.trajectory_optimizer.image_processor import ImageProcessor
 from drawing_bot_api.logger import Log
 from math import sqrt, pow, atan2
-
-# INPUT SPACE: 5 left angles + 5 right angles = 10
-# ACTION SPACE: 1 left angle + 1 right angle = 2
-
-#/Users/leon/.plaidml
 
 class LossHistory(keras.callbacks.Callback):
     losses = [] 
@@ -41,21 +37,28 @@ class ReplayBuffer:
         self.buffer.clear()
 
 class Trainer:
-    model = None
+    actor = None
+    critic = None
+    
     replay_buffers = ReplayBuffer()
-    input_buffer = None
-    action_buffer = None
+    states_history = []
+    offsets_history = []
+    reward_history = []
     image_processor = ImageProcessor()
     log = Log(verbose=1)
     loss_history = LossHistory()
 
     def __init__(self, model=None, **kwargs):
         if model == None:
-            self.model = self.new_model(**kwargs)
+            self.new_model(**kwargs)
         elif model == 'ignore':
-            self.model = None
+            self.actor = None
         else:
-            self.model = self.load_model(model)
+            self.load_model(model)
+
+    #####################################################################
+    # INFERENCE METHODS
+    #####################################################################
 
     def _normalize_trajectory(self, trajectory):
         for point in trajectory:
@@ -63,104 +66,117 @@ class Trainer:
             point[1] = point[1] / PLOT_YLIM[1]
 
     def adjust_trajectory(self, trajectory, exploration_factor=0):
-        # trajectory has the form: [[x1, y1], [x2, y2], ... , [xn, yn]]
-        _trajectory = trajectory.copy()
+        _phases = self._points_to_phases(trajectory)                        # turn two dimensional points of trajectory into phases (one dimensional)
+        _states = np.array(self._get_states(_phases))                       # batch phases together into sequences of phases with dimension input_size
+        self.states_history.append(_states)
+        _offsets = self._get_offsets(_states, exploration_factor)           # actor inference, returns two dimensional offset
+        self.offsets_history.append(_offsets)
+        _adjusted_trajectory = self._apply_offsets(_offsets, trajectory)    # add offset to originial trajectory
+        return _adjusted_trajectory
+        
+    def _apply_offsets(self, offsets, trajectory):
+        # check if dimensions are right
+        if len(offsets) != len(trajectory):
+            print('Dimension of inferenced offsets and original trajectory dont match')
+            return 0
+        
+        # add offset to trajectory
+        _new_trajectory = []
+        for _point_index in len(trajectory):
+            _new_point_x = trajectory[_point_index][0]+offsets[_point_index][0]
+            _new_point_y = trajectory[_point_index][1]+offsets[_point_index][1]
+            _new_trajectory.append([_new_point_x, _new_point_y])
 
-        self._normalize_trajectory(_trajectory)
-        _batched_inputs = []
+        return _new_trajectory
 
-        # iterating over all points
-        for _index in range(len(_trajectory)):
+    def _get_offsets(self, _states, exploration_factor):
+        _offsets = self.actor.predict(_states, batch_size=len(_states))
 
-            _input = []
-            
-            # iterating over the last 10 points
-            for _pointer in range(_index-int(INPUT_DIM)+1, _index+1):
-                if _pointer < 0:
-                    _input.append(0)
-                else:
-                    _prev_point = _trajectory[_pointer-1]
-                    _point = _trajectory[_pointer]
-                    _input.append(self._get_phase(_point, _prev_point))
-    
-            _batched_inputs.append(_input)
+        # exchange some offsets with a random offset with probability exploration factor
+        for _offset in _offsets:
+            if np.random.random(1) < exploration_factor:
+                _offset = (np.random.random(2) * 2 ) - 1
+        return _offsets
 
-        _batched_inputs = np.array(_batched_inputs)
-        self.input_buffer = _batched_inputs
-
-        self.model.compile()
-        _offsets = self.model.predict(_batched_inputs, batch_size=len(_batched_inputs))
-
-        for i in range(len(_offsets)):
-            if np.random.randint(0, 100) > exploration_factor*100:
-                _offsets[i][0] = np.random.random(1)
-                _offsets[i][1] = np.random.random(1)
-
-        print(f'Offsets: {_offsets}')
-
-        self.action_buffer = _offsets
-
-        # the offset is scaled to match with dimensions of drawings
-        return OUTPUT_SCALING * _offsets
-    
+    def _get_states(self, _phases):
+        _states = []
+        for _current_point_index in range(len(_phases)):
+            _state = []
+            for _offset_from_current_point in range(-(INPUT_DIM-NUM_LEADING_POINTS), NUM_LEADING_POINTS):
+                try:
+                    _state.append(_phases[_current_point_index+_offset_from_current_point])
+                except:
+                    _state.append(0)
+            _states.append(_state)
+        return _states
+                
     def _get_phase(self, point, prev_point):
         _pointing_vector = [point[0]-prev_point[0], point[1]-prev_point[1]]
         _phase = atan2(_pointing_vector[1], _pointing_vector[0])
         return _phase
     
-    def _get_target_vector_via_subtraction_method(self, reward):
-        _actions = self.action_buffer
-        _actions = _actions - np.sign(_actions) * (1 - reward)
-        return _actions
+    def _points_to_phases(self, trajectory):
+        _phases = []
+        for _i in range(1, len(trajectory)):
+            _point = trajectory[_i]
+            _prev_point = trajectory[_i -1]
+            _phases.append(self._get_phase(_point, _prev_point))
+        return _phases
+
+    #####################################################################
+    # TRAINING METHODS
+    #####################################################################
 
     def train(self, reward):
-        _target_vector = self.action_buffer * reward
-        _target_vector = self._get_target_vector_via_subtraction_method(reward)
-        #print(f'Action Buffer: {self.action_buffer}')
-        #print(f'Target vector: {_target_vector}')
-        self.model.fit(self.input_buffer, _target_vector, batch_size=len(self.input_buffer), callbacks=[self.loss_history])
-        self.input_buffer = None
-        self.action_buffer = None
+        self._update_actor_and_critic(reward)
+
+    def _update_actor_and_critic(self, reward):
+        gamma = 0.99
+        _states = self.states_history[-1]
+        _offsets = self.offsets_history[-1]
+
+        if len(_states) != len(_offsets):
+            print('Dimensional mismatch between states and trajectory pulled from history')
+            return 1
+        
+        for _t in range(len(_states)):
+            if _t == (len(_states) + 1):
+                v_target = [reward]
+            else:
+                v_target = [reward + gamma * self.critic.predict(_states[_t+1])]
+
+            self.critic.fit(_states[_t], v_target)
+            
+            # Compute advantage for actor update
+            advantage = v_target - self.critic.predict(_states[_t])
+            advantage_vector = np.full_like(_offsets[_t], advantage)
+
+            # Train actor using advantage
+            self.actor.fit(_states[_t], advantage_vector)
+
+    #####################################################################
+    # MODEL CREATION, SAVING and LOADING
+    #####################################################################
 
     def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
-                
-        _kernel_initializer = 'zeros'#keras.initializers.RandomUniform(minval=-0.005, maxval=0.005, seed=None) # inititalizing weights
+        # create critic
+        _inputs_critic = keras.layers.Input(shape=(input_size,))
+        _hidden_critic = keras.layers.Dense(hidden_layer_size, activation="relu")
+        _output_critic = keras.layers.Dense(1)
+        self.critic = Sequential([_inputs_critic, _hidden_critic, _output_critic])
 
-        _hidden_layer_1 = Dense(
-            hidden_layer_size, 
-            activation='linear', 
-            input_shape=(input_size,), 
-            kernel_initializer=_kernel_initializer,
-            bias_initializer='zeros'
-        )
+        # create actor
+        _inputs_actor = keras.layers.Input(shape=(input_size,))
+        _hidden_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
+        _output_actor = keras.layers.Dense(output_size, activation='tanh')
+        self.actor = Sequential([_inputs_actor, _hidden_actor, _output_actor])
 
-        _hidden_layer_2 = Dense(
-            hidden_layer_size, 
-            activation='linear', 
-            kernel_initializer=_kernel_initializer,
-            bias_initializer='zeros'
-        )
+        # compile
+        _optimizer = keras.optimizers.SGD()
+        _loss = keras.losses.MSE()
 
-        _output_layer = Dense(
-            output_size, 
-            activation='linear', 
-            kernel_initializer=_kernel_initializer,
-            bias_initializer='zeros'
-        ) 
-
-        _lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=0.01, decay_steps=1000, decay_rate=0.96)
-        _optimizer = keras.optimizers.SGD(learning_rate=_lr_schedule)
-
-        #_loss = keras.losses.MeanSquaredError()
-        _loss = keras.losses.KLDivergence(reduction='sum_over_batch_size')
-
-
-        model = Sequential([_hidden_layer_1, _hidden_layer_2, _output_layer])
-        model.compile(optimizer=_optimizer, loss=_loss, metrics=['accuracy'])
-
-        #print(f'Model summary: {model.summary()}')
-
-        return model
+        self.actor.compile(optimizer=_optimizer, loss=_loss, metrics=['accuracy'])
+        self.critic.compile(optimizer=_optimizer, loss=_loss, metrics=['accuracy'])
 
     def load_model(self, model_id):
         # Looks how many models are in directory
@@ -189,4 +205,4 @@ class Trainer:
             _model_id = _num_of_models
 
         _path = os.path.join(_script_dir, f'models/model_{str(_model_id)}.h5')
-        self.model.save(_path)
+        self.actor.save(_path)

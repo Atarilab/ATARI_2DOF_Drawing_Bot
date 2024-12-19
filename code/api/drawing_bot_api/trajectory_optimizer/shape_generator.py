@@ -18,7 +18,10 @@ class ShapeGenerator:
     num_of_shapes = 0
     logger = Log(0)
 
-    def __call__(self):
+    def __call__(self, seed=None):
+        if seed is not None:
+            random.seed(seed)
+            
         self.logger('Generating shapes...')
         self._init()
 
