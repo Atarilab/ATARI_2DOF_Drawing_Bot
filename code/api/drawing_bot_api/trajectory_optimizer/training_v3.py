@@ -28,7 +28,7 @@ class LossHistory(keras.callbacks.Callback):
         if self.type == 'critic':
             self._save_loss_critic(logs=logs)
         elif self.type == 'actor':
-            self._save_loss_actor(logs=logs)
+            self._save_loss_critic(logs=logs)
         else:
             print(f'type not found.')
     
@@ -44,7 +44,6 @@ class LossHistory(keras.callbacks.Callback):
         self.call_counter += 1
         self.losses.append(logs.get('loss'))
 
-    
 class Step:
     def __init__(self, state, action):
         self.state = state
@@ -135,11 +134,11 @@ class Trainer:
         _offsets = self.actor.predict(_states, batch_size=len(_states), verbose=0)
 
         if exploration_factor:
-            _offsets = np.zeros(np.shape(_offsets))
+            #_offsets = np.zeros(np.shape(_offsets))
             
             # exchange some offsets with a random offset with probability exploration factor
             for _offset_index in range(len(_offsets)):
-                if np.random.random(1) < exploration_factor:
+                if np.random.random() < exploration_factor:
                     _offsets[_offset_index] = (np.random.random(2) * 2 ) - 1
         
         return _offsets
@@ -238,8 +237,11 @@ class Trainer:
         
         return _new_states
     
-    def _normalize_to_range(self, data):
+    def _normalize_to_range_incl_neg(self, data):
         return 2 * (data - np.min(data)) / (np.max(data) - np.min(data)) - 1
+    
+    def _normalize_to_range_excl_pos(self, data):
+        return (data - np.min(data)) / (np.max(data) - np.min(data))
 
     #####################################################################
     # TRAINING METHODS
@@ -248,8 +250,8 @@ class Trainer:
     def train(self, reward, random_action_prob):
         return self._update_actor_and_critic(reward, random_action_prob)
 
-    def _update_actor_and_critic(self, reward, random_action_prob):
-        gamma = 1#0.995
+    def _update_actor_and_critic(self, reward, train_actor=True):
+        gamma = 0.9
         _states = self.states_history[-1]
         _actions = self.action_history[-1]
 
@@ -312,24 +314,26 @@ class Trainer:
         # ACTOR #########
 
         # calc advantage
-        _advantage = _v_targets - _critic_predictions_with_actions
-        _advantage = self._normalize_to_range(_advantage)
-        _actor_loss = 1 - _advantage
+        #_advantage = _v_targets - _critic_predictions_with_actions
+        _advantage = _critic_predictions_with_actions
+        _advantage = self._normalize_to_range_excl_pos(_advantage)
+        _actor_loss = 1-_advantage #(1-np.abs(_advantage)) * np.sign(_advantage)
+        #_actor_loss = self._normalize_to_range(_actor_loss)
         _actor_loss = np.repeat(_actor_loss, 2, axis=1)
 
-
-        if random_action_prob <= 0.1:
-            self.actor.fit(_states, _actor_loss, batch_size=len(_states), callbacks=[self.loss_history_actor])
+        if train_actor:
+            self.actor.fit(_states, _actor_loss, batch_size=16, callbacks=[self.loss_history_actor])
 
         self.action_history.clear()
         self.states_history.clear()
         self.adjusted_trajectory_history.clear()
 
-        return np.abs(self._normalize_to_range(_critic_predictions_with_actions).T)[0]
+        #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
+        return np.abs(_actor_loss.T)[0]
 
 
     def _update_actor_and_critic_old(self, reward):
-        gamma = 0.99
+        gamma = 0.9
         _states = self.states_history[-1]
         _actions = self.action_history[-1]
         _states_reassigned = []
@@ -407,14 +411,14 @@ class Trainer:
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         _hidden_3_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
-        _hidden_4_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
-        _output_actor = keras.layers.Dense(output_size, activation='tanh')
-        self.actor = Sequential([_inputs_actor, _hidden_1_actor, _hidden_2_actor, _hidden_3_actor, _hidden_4_actor, _output_actor])
+        #_hidden_4_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
+        _output_actor = keras.layers.Dense(output_size, activation='tanh', kernel_initializer=keras.initializers.RandomUniform(minval=-0.1, maxval=0.1))
+        self.actor = Sequential([_inputs_actor, _hidden_1_actor, _hidden_2_actor, _hidden_3_actor, _output_actor])
 
         # compile
         _optimizer_critic = keras.optimizers.Adam(learning_rate=0.0001)
-        _optimizer_actor = keras.optimizers.Adam(learning_rate=0.00001)
-        _loss_critic = weighted_MSE
+        _optimizer_actor = keras.optimizers.Adam(learning_rate=0.000001)
+        _loss_critic = keras.losses.MeanSquaredError() #weighted_MSE
         _loss_actor = pass_through_loss
 
         self.actor.compile(optimizer=_optimizer_actor, loss=_loss_actor, metrics=['accuracy'])

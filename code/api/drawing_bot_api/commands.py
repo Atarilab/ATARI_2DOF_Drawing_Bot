@@ -8,6 +8,8 @@ from drawing_bot_api.serial_handler import Serial_handler
 import numpy as np
 import matplotlib as mpl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+mpl.get_backend()
+mpl.use('Agg')
 
 class DrawingBot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
@@ -149,8 +151,9 @@ class DrawingBot:
             #image = image[120:850, 165:1145, 0:3] # old croping
             image = image[70:410, 90:570]
             del canvas
+            plt.clf()
             plt.close('all')
-            fig.close()
+            del fig
             return image
 
     def plot_point(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, point=None, color=None):
