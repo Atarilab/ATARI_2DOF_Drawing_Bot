@@ -277,9 +277,14 @@ class Trainer:
 
         # calc value targets
         #_v_targets = np.full_like(_critic_predictions_with_actions, reward)
-        _v_targets = gamma * _critic_predictions_with_actions #+ reward
+        _reward = np.array(reward).reshape(-1, 1)
+
+        _v_targets = gamma * _critic_predictions_with_actions
         _v_targets = _v_targets[1:]
-        _v_targets = np.append(_v_targets, reward)
+        #print(f'v targets: {_v_targets}')
+        #print(f'rewards: {_reward}')
+        _v_targets = _reward[:len(_v_targets)] + _v_targets
+        _v_targets = np.append(_v_targets, np.mean(_reward))
         _v_targets = _v_targets.reshape(-1, 1)
 
         _critic_mean = np.mean(_critic_predictions_with_actions)

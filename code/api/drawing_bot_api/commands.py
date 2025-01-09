@@ -8,7 +8,6 @@ from drawing_bot_api.serial_handler import Serial_handler
 import numpy as np
 import matplotlib as mpl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-mpl.use('Agg')
 
 class DrawingBot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
@@ -120,7 +119,7 @@ class DrawingBot:
                         _x = [_prev_point[0], points[_index][0]]
                         _y = [_prev_point[1], points[_index][1]] 
                         #_color = (0, 0, 1-_color_assignment[_index])
-                        _color = (_color_assignment[_index], _color_assignment[_index], _color_assignment[_index])
+                        _color = (0, 1-_color_assignment[_index], 0)
                         _size = np.max([1, (1 - _color_assignment[_index-1]) * 2])
                         #print(f'Color: {_color}\tSize: {_size}')
                         plt.plot(_x, _y, marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
@@ -149,6 +148,9 @@ class DrawingBot:
             image = np.asarray(buf)
             #image = image[120:850, 165:1145, 0:3] # old croping
             image = image[70:410, 90:570]
+            del canvas
+            plt.close('all')
+            fig.close()
             return image
 
     def plot_point(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, point=None, color=None):

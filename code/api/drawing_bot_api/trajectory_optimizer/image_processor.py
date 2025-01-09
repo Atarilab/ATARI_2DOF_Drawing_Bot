@@ -99,6 +99,7 @@ class ImageProcessor:
         _distance_transform = cv2.distanceTransform(255 - inv_template, cv2.DIST_L2, 3)
         _mask_drawing = (inv_drawing == 255)
         _distances = _distance_transform[_mask_drawing]
+        del _distance_transform
         return np.mean(_distances)
     
     def calc_rewards_for_individual_points(self, _images_of_template_points, drawing):
