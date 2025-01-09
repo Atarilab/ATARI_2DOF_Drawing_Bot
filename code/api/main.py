@@ -4,7 +4,7 @@ from drawing_bot_api import DrawingBot
 from drawing_bot_api.trajectory_optimizer.image_processor import ImageProcessor
 from drawing_bot_api.trajectory_optimizer.wiper import Wiper
 from drawing_bot_api.trajectory_optimizer.simulator import PatternErrorSim
-from drawing_bot_api.trajectory_optimizer.training import Trainer
+from drawing_bot_api.trajectory_optimizer.training_v1 import Trainer
 
 shape_generator = ShapeGenerator()
 drawing_bot = DrawingBot()

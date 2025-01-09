@@ -51,37 +51,37 @@ class PatternErrorSim:
             # add offset to current point
             _point = points[_index]
             _radius = sqrt(pow(_point[0]-_new_points[-1][0], 2) + pow(_point[1] - _new_points[-1][1], 2))
-            print(f'Current point: {_point};    Previous point: {_new_points[-1]}')
-            print(f'Radius: {_radius}')
+            #print(f'Current point: {_point};    Previous point: {_new_points[-1]}')
+            #print(f'Radius: {_radius}')
 
             # Calculate phase of vector between current point and last point; Same for previous point and the one before
             _phase = self._get_phase(_point, _new_points[-1])
             _prev_phase = self._get_phase(_new_points[-1], _new_points[-2])
-            print(f'current phase: {_phase};    Prev phase: {_prev_phase}')
+            #print(f'current phase: {_phase};    Prev phase: {_prev_phase}')
 
             # Calculate difference between the last two phases
             _phase_difference = _phase-_prev_phase
-            print(f'Phase difference before: {_phase_difference}')
+            #print(f'Phase difference before: {_phase_difference}')
             if abs(_phase_difference) > pi:
                 _phase_difference = -np.sign(_phase_difference) * ((2 * pi) - abs(_phase_difference))
-            print(f'Phase difference after: {_phase_difference}')
+            #print(f'Phase difference after: {_phase_difference}')
 
             damping = -(1/(1 + exp(DAMPING_FACTOR * abs(_prev_phase_offset))))
             _phase_offset = damping * (_phase_difference) * DECAY_FACTOR
             #_phase_offset = -0.65 * (_phase_difference)
-            print(f'Phase offset: {_phase_offset}')
+            #print(f'Phase offset: {_phase_offset}')
 
             # Calculate offset for next point
             _new_vector = self._get_point_from_phase(_phase+_phase_offset, _radius)
-            print(f'Offset vector: {_new_vector}')
+            #print(f'Offset vector: {_new_vector}')
 
             _new_point = [_new_points[-1][0]+_new_vector[0], _new_points[-1][1]+_new_vector[1]]
-            print(f'New point: {_new_point}')
+            #print(f'New point: {_new_point}')
 
             # overwritting all 'prev'-parameters with current parameters
             _new_points.append(_new_point)
             _prev_phase_offset = _phase_offset
-            print(f'----------------------------------')
+            #print(f'----------------------------------')
         
         _new_points.pop(0)
         return _new_points

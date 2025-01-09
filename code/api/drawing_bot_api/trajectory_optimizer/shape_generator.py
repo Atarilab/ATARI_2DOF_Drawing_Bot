@@ -3,6 +3,7 @@ from drawing_bot_api.shapes import Line, PartialCircle
 from math import sqrt
 from drawing_bot_api.delta_utils import ik_delta
 from drawing_bot_api.logger import Log
+import time
 
 MIN_NUM_OF_SHAPES = 2
 MAX_NUM_OF_SHAPES = 6
@@ -21,27 +22,27 @@ class ShapeGenerator:
     def __call__(self, seed=None):
         if seed is not None:
             random.seed(seed)
-            
-        self.logger('Generating shapes...')
+
+        #self.logger('Generating shapes...')
         self._init()
 
-        self.logger(f'Number of Shapes: {self.num_of_shapes}')
+        #self.logger(f'Number of Shapes: {self.num_of_shapes}')
 
-        for _ in range(self.num_of_shapes):
+        for _index in range(self.num_of_shapes):
             while True:
                 _toss = random.randint(0, 10)
                 _shape = None
 
                 if not _toss:
-                    self.logger(f'Generating line...')
+                    #self.logger(f'Generating line...')
                     _shape = self._get_line()
-                    self.logger(f'Generated line: {self.shapes[-1]}')
+                    #self.logger(f'Generated line: {self.shapes[-1]}')
                 else:
-                    self.logger(f'Generating partial circle...')
+                    #self.logger(f'Generating partial circle...')
                     _shape = self._get_partial_circle()
-                    self.logger(f'Generated partial circle: {self.shapes[-1]}')
+                    #self.logger(f'Generated partial circle: {self.shapes[-1]}')
                 
-                self.logger('Testing_shape')
+                self.logger(f'Testing_shape {_index}')
                 if _shape and not self._test_shape(_shape):
                     self.shapes.append(_shape)
                     break
@@ -81,7 +82,8 @@ class ShapeGenerator:
         for i in range(100):
             _point = shape.get_point(i/100)
 
-            if _point[1] < DOMAIN[2]:
+            if _point[1] < DOMAIN[2]: # check lower bound
+                time.sleep(0.001)
                 return 1
             
             _point = [_point[0]/1000, _point[1]/1000]
@@ -89,5 +91,7 @@ class ShapeGenerator:
             try:
                 ik_delta(_point)
             except:
+                time.sleep(0.001)
                 return 1
+        time.sleep(0.001)
         return 0

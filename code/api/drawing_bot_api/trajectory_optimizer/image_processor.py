@@ -4,16 +4,18 @@ import cv2
 import os
 import numpy as np
 from math import exp
+from drawing_bot_api.trajectory_optimizer.config import *
 
 class ImageProcessor:
     def __init__(self):
-        self._camera = Camera()
-        self._image_counter = 0
+        self.camera = Camera()
+        self.call_counter = 0
         self.log = Log(0)
+        self.image_counter = SAVE_IMAGE_FREQ
 
     def save_image(self, image, directory, type):
         _script_dir = os.path.dirname(os.path.abspath(__file__))
-        _path = os.path.join(_script_dir, f'images/{directory}/{str(self._image_counter)}_{type}.jpg')
+        _path = os.path.join(_script_dir, f'images/{directory}/{str(self.call_counter)}_{type}.jpg')
         cv2.imwrite(_path, image)
         self.log(f'Saved {type} to {_path}')
     
@@ -48,12 +50,81 @@ class ImageProcessor:
 
         return _inverted
     
-    def _normalize(self, value):
+    def calculate_defect_score(self, defects, contour):
+        if defects is None:  # No defects
+            return 0, 0
+        total_defect_depth = 0
+        for i in range(defects.shape[0]):
+            start_idx, end_idx, far_idx, depth = defects[i, 0]
+            total_defect_depth += depth * 0.1  # Depth is in fixed-point format (multiply by 0.1 if necessary)
+
+        # Normalize score by contour perimeter or area
+        perimeter = cv2.arcLength(contour, True)
+        return total_defect_depth, perimeter
+    
+    def _calculate_average_score(self, contours):
+        _defect_depths = []
+        _perimeter_lengths = []
+        
+        for _contour in contours:
+            _hull = cv2.convexHull(_contour, returnPoints=False)
+            _defects = cv2.convexityDefects(_contour, _hull)
+            _defect_depth, _perimeter_length = self.calculate_defect_score(_defects, _contour)
+            _defect_depths.append(_defect_depth)
+            _perimeter_lengths.append(_perimeter_length)
+        
+        _score = np.sum(_defect_depths) / np.sum(_perimeter_lengths)
+        return _score
+
+    def calc_similarity_via_hu_moments(self, inv_drawing, inv_template):
+        return cv2.matchShapes(inv_drawing, inv_template, cv2.CONTOURS_MATCH_I1, 0)
+    
+    def calc_similarity_via_convex_hull(self, inv_drawing, inv_template):
+        try:
+            _contour_drawing, _ = cv2.findContours(inv_drawing, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            _contour_template, _ = cv2.findContours(inv_template, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)  
+
+            _score_drawing = self._calculate_average_score(_contour_drawing)
+            _score_template = self._calculate_average_score(_contour_template)
+
+            #print(f'Score drawing: {_score_drawing}')
+            #print(f'Score template: {_score_template}')
+
+            difference_in_defects = abs(_score_drawing - _score_template)
+            return difference_in_defects
+        except:
+            return None
+        
+    def calc_similiarity_via_chamfer_matching(self, inv_drawing, inv_template):
+        _distance_transform = cv2.distanceTransform(255 - inv_template, cv2.DIST_L2, 3)
+        _mask_drawing = (inv_drawing == 255)
+        _distances = _distance_transform[_mask_drawing]
+        return np.mean(_distances)
+    
+    def calc_rewards_for_individual_points(self, _images_of_template_points, drawing):
+        _drawing = drawing
+        # turn to inverted binary black and white image
+        _simpl_drawing = self._simplify_template(_drawing)
+        _grey_drawing = _simpl_drawing#cv2.cvtColor(_simpl_drawing, cv2.COLOR_BGR2GRAY)
+        _, _inv_drawing = cv2.threshold(_grey_drawing, 127, 255, cv2.THRESH_BINARY)
+
+        _rewards = []
+        for _template_point_image in _images_of_template_points:
+            _inv_template_point_image = self._simplify_template(_template_point_image)
+            _difference = self.calc_similiarity_via_chamfer_matching(_inv_template_point_image, _inv_drawing)
+            if _difference < 1:
+                _difference = 0
+            _rewards.append(self._invert_and_normalize(_difference, pre_scaling=1))
+        
+        return _rewards
+
+    
+    def _invert_and_normalize(self, value, pre_scaling=50):
         # modified sigmoid function
         # since there are no negative values from shapeMatching the sigmoid is scaled and inverted
         # So values close to 1 represent high similarity and values close to 0 represent low similarity
         # Sensitivity is increased by scaling the calulated similarity measure by 40 before applying the normalzation
-        new_value = 2 - (2 / (1 + exp(-40*value)))
+        new_value = 2 - (2 / (1 + exp(-pre_scaling*value)))
         return new_value
 
     def __call__(self, template, drawing=None):
@@ -62,16 +133,20 @@ class ImageProcessor:
 
         _drawing = drawing
         if _drawing is None:
-            _drawing = self._camera()
+            _drawing = self.camera()
             _drawing = _drawing[10:600, 220:1060]
 
             _template = _template[:690, :]
 
-        self._image_counter += 1
+        _save_images = False
+        if self.image_counter == SAVE_IMAGE_FREQ:
+            _save_images = True
+            self.image_counter = 0
 
         # save both images in original form
-        self.save_image(_drawing, 'original', 'drawing')
-        self.save_image(_template, 'original', 'template')
+        if _save_images:
+            self.save_image(_drawing, 'original', 'drawing')
+            #self.save_image(_template, 'original', 'template')
 
         # turn to inverteed binary black and white image
         _simpl_drawing = self._simplify_template(_drawing)
@@ -80,12 +155,29 @@ class ImageProcessor:
         _inv_template = self._simplify_template(_template)
 
         # save edited images
-        self.save_image(_inv_drawing, 'simplified', 'drawing')
-        self.save_image(_inv_template, 'simplified', 'template')
+        if _save_images and SAVE_SIMPLIFIED:
+            self.save_image(_inv_drawing, 'simplified', 'drawing')
+            self.save_image(_inv_template, 'simplified', 'template')
 
-        similarity = cv2.matchShapes(_inv_drawing, _inv_template, cv2.CONTOURS_MATCH_I1,0)
-        #print(f'similarity without sigmoid: {similarity}')
-        return self._normalize(similarity)
+        # calc scores
+        #similarity_hu_moments = self.calc_similarity_via_hu_moments(_inv_drawing, _inv_template)
+        #similarity_convex_hull = self.calc_similarity_via_convex_hull(_inv_drawing, _inv_template)
+        similarity_chamfer_matching = self.calc_similiarity_via_chamfer_matching(_inv_drawing, _inv_template)
+
+        # normalize scores
+        #norm_similarity_hu_moments = self._normalize(similarity_hu_moments, pre_scaling=50)
+        #norm_similarity_convex_hull = self._normalize(similarity_convex_hull, pre_scaling=10)
+        norm_similarity_chamfer_matching = self._invert_and_normalize(similarity_chamfer_matching, pre_scaling=2)
+
+        #print(f'Hu moments: {norm_similarity_hu_moments}\t\tConvex hull: {norm_similarity_convex_hull}')
+
+        self.call_counter += 1
+        self.image_counter += 1
+
+        #if similarity_convex_hull is None:
+        #    return None
+
+        return norm_similarity_chamfer_matching
 
 
 if __name__ == '__main__':

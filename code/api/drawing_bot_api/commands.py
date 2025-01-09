@@ -6,7 +6,9 @@ from drawing_bot_api import shapes
 from drawing_bot_api.config import *
 from drawing_bot_api.serial_handler import Serial_handler
 import numpy as np
+import matplotlib as mpl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+mpl.use('Agg')
 
 class DrawingBot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
@@ -75,7 +77,7 @@ class DrawingBot:
         shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
         shapes.PartialCircle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
 
-    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, points=None):
+    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, points=None, color_assignment=None):
         
         fig, ax = plt.subplots()
         ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
@@ -104,17 +106,28 @@ class DrawingBot:
             plt.plot(previous_shape.end_point[0], previous_shape.end_point[1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
 
         else:
-            plt.plot(points[0][0], points[0][1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
-            
-            _prev_point = None
-            for point in points:
-                if _prev_point is not None:
-                    _x = [_prev_point[0], point[0]]
-                    _y = [_prev_point[1], point[1]] 
-                    plt.plot(_x, _y, color=SHAPE_COLOR)
-                _prev_point = point
-                #plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR, label='Start point')
-            
+            if color_assignment is None:
+                plt.plot(points[0][0], points[0][1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
+                
+                _points = np.array(points).T
+                plt.plot(_points[0], _points[1], color=SHAPE_COLOR)
+
+            else:
+                _color_assignment = np.append([0, 0], color_assignment)
+                _prev_point = None
+                for _index in range(len(points)):
+                    if _prev_point is not None:
+                        _x = [_prev_point[0], points[_index][0]]
+                        _y = [_prev_point[1], points[_index][1]] 
+                        #_color = (0, 0, 1-_color_assignment[_index])
+                        _color = (_color_assignment[_index], _color_assignment[_index], _color_assignment[_index])
+                        _size = np.max([1, (1 - _color_assignment[_index-1]) * 2])
+                        #print(f'Color: {_color}\tSize: {_size}')
+                        plt.plot(_x, _y, marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
+                    _prev_point = points[_index]
+                    #plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR, label='Start point')
+                
+
             plt.plot(points[-1][0], points[-1][1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=END_DOT_COLOR, markerfacecolor=END_DOT_COLOR, label='End point')
 
         plt.plot(0, 0, color=BRIDGE_COLOR, label='Bridging lines')
@@ -136,6 +149,46 @@ class DrawingBot:
             image = np.asarray(buf)
             #image = image[120:850, 165:1145, 0:3] # old croping
             image = image[70:410, 90:570]
+            return image
+
+    def plot_point(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, point=None, color=None):
+        
+        fig, ax = plt.subplots()
+        ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
+        ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
+
+        if not training_mode:
+            self.__plot_domain(resolution=resolution)
+
+
+        if color is None:
+            _color = (0, 0, 0)
+        else:
+            _color = color
+
+        _size = 1
+        plt.plot(point[0], point[1], marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
+
+        plt.plot(0, 0, color=BRIDGE_COLOR, label='Bridging lines')
+        plt.plot(0, 0, color=SHAPE_COLOR, label='User defined drawings')
+        plt.plot(0, 0, color=DOMAIN_COLOR, label='Domain')
+
+        plt.gca().set_aspect('equal', adjustable='box')
+
+        if not training_mode:
+            plt.legend(bbox_to_anchor=(1, 1.15), ncol=3)    
+            plt.show(block=blocking)
+        else:
+            # Retrieve a view on the renderer buffer
+            plt.figure(figsize=(6, 4), dpi=100)
+            canvas = FigureCanvasAgg(fig)
+            canvas.draw()
+            buf = canvas.buffer_rgba()
+            # convert to a NumPy array
+            image = np.asarray(buf)
+            #image = image[120:850, 165:1145, 0:3] # old croping
+            image = image[70:410, 90:570]
+            plt.close('all')
             return image
 
     def plot_sampled_domain(self):
