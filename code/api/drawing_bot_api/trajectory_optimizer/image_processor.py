@@ -115,7 +115,7 @@ class ImageProcessor:
             _difference = self.calc_similiarity_via_chamfer_matching(_inv_template_point_image, _inv_drawing)
             if _difference < 1:
                 _difference = 0
-            _rewards.append(self._invert_and_normalize(_difference, pre_scaling=1))
+            _rewards.append(self._invert_and_normalize(_difference, pre_scaling=2))
         
         return _rewards
 

@@ -20,11 +20,9 @@ class LossHistory(keras.callbacks.Callback):
         self.call_counter = 0
         self.type = type
 
-    def on_train_begin(self, logs={}):
-        #self.losses = []
-        pass
-
-    def on_batch_end(self, batch, logs={}):
+    def on_epoch_end(self, epoch, logs={}):
+        self.losses.append(logs.get('loss'))
+"""
         if self.type == 'critic':
             self._save_loss_critic(logs=logs)
         elif self.type == 'actor':
@@ -39,11 +37,11 @@ class LossHistory(keras.callbacks.Callback):
         if self.call_counter % 28 == 0:
             self.losses.append(np.mean(self.buffer))
             self.buffer.clear()
-    
+
     def _save_loss_actor(self, logs={}):
         self.call_counter += 1
         self.losses.append(logs.get('loss'))
-
+"""
 class Step:
     def __init__(self, state, action):
         self.state = state
@@ -62,7 +60,7 @@ class ReplayBuffer:
 
 def pass_through_loss(y_true, y_pred):
     #tf.print("y_true:", y_true)
-    return ops.mean(y_true * y_pred, axis=-1)
+    return ops.mean(ops.abs(y_true * y_pred), axis=-1)
 
 def weighted_MSE(y_true, y_pred):
     return ops.mean(1 * ops.square(y_true - y_pred))
@@ -240,18 +238,18 @@ class Trainer:
     def _normalize_to_range_incl_neg(self, data):
         return 2 * (data - np.min(data)) / (np.max(data) - np.min(data)) - 1
     
-    def _normalize_to_range_excl_pos(self, data):
+    def _normalize_to_range_pos(self, data):
         return (data - np.min(data)) / (np.max(data) - np.min(data))
 
     #####################################################################
     # TRAINING METHODS
     #####################################################################
 
-    def train(self, reward, random_action_prob):
-        return self._update_actor_and_critic(reward, random_action_prob)
+    def train(self, reward, train_actor=True):
+        return self._update_actor_and_critic(reward, train_actor)
 
-    def _update_actor_and_critic(self, reward, train_actor=True):
-        gamma = 0.9
+    def _update_actor_and_critic(self, reward, train_actor):
+        gamma = 0.7
         _states = self.states_history[-1]
         _actions = self.action_history[-1]
 
@@ -316,7 +314,7 @@ class Trainer:
         # calc advantage
         #_advantage = _v_targets - _critic_predictions_with_actions
         _advantage = _critic_predictions_with_actions
-        _advantage = self._normalize_to_range_excl_pos(_advantage)
+        _advantage = self._normalize_to_range_pos(_advantage)
         _actor_loss = 1-_advantage #(1-np.abs(_advantage)) * np.sign(_advantage)
         #_actor_loss = self._normalize_to_range(_actor_loss)
         _actor_loss = np.repeat(_actor_loss, 2, axis=1)
