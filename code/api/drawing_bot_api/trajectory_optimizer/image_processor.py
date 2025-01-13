@@ -13,11 +13,24 @@ class ImageProcessor:
         self.log = Log(0)
         self.image_counter = SAVE_IMAGE_FREQ
 
-    def save_image(self, image, directory, type):
+    def save_image(self, image, directory, type, nr):
         _script_dir = os.path.dirname(os.path.abspath(__file__))
-        _path = os.path.join(_script_dir, f'images/{directory}/{str(self.call_counter)}_{type}.jpg')
+        _path = os.path.join(_script_dir, f'images/{directory}/{str(nr)}_{type}.jpg')
         cv2.imwrite(_path, image)
         self.log(f'Saved {type} to {_path}')
+
+    def save_images_combined(self, image1, image2, directory, type, nr):
+        _script_dir = os.path.dirname(os.path.abspath(__file__))
+        _path = os.path.join(_script_dir, f'images/{directory}/{str(nr)}_{type}.jpg')
+
+        # Resize the images to have the same height (optional, ensures alignment)
+        height = max(image1.shape[0], image2.shape[0])
+        _image1 = cv2.resize(image1, (int(image1.shape[1] * height / image1.shape[0]), height))
+        _image2 = cv2.resize(image2, (int(image2.shape[1] * height / image2.shape[0]), height))
+
+        # Concatenate the images horizontally
+        _combined_image = np.hstack((image1, image2))
+        cv2.imwrite(_path, _combined_image)
     
     def _simplify_template(self, image):
         # Enhance Contrast
@@ -113,20 +126,27 @@ class ImageProcessor:
         for _template_point_image in _images_of_template_points:
             _inv_template_point_image = self._simplify_template(_template_point_image)
             _difference = self.calc_similiarity_via_chamfer_matching(_inv_template_point_image, _inv_drawing)
-            if _difference < 1:
-                _difference = 0
-            _rewards.append(self._invert_and_normalize(_difference, pre_scaling=2))
+            if _difference > REWARD_DISTANCE_CLIPPING:
+                _difference = REWARD_DISTANCE_CLIPPING
+
+            if REWARD_NORMALIZATION_MODE == 'sigmoid':
+                _rewards.append(self._invert_and_normalize_sigmoid(_difference, pre_scaling=1.5))
+            elif REWARD_NORMALIZATION_MODE == 'linear':
+                _rewards.append(self._invert_and_normalize_linear(_difference))
         
         return _rewards
 
     
-    def _invert_and_normalize(self, value, pre_scaling=50):
+    def _invert_and_normalize_sigmoid(self, value, pre_scaling=50):
         # modified sigmoid function
         # since there are no negative values from shapeMatching the sigmoid is scaled and inverted
         # So values close to 1 represent high similarity and values close to 0 represent low similarity
         # Sensitivity is increased by scaling the calulated similarity measure by 40 before applying the normalzation
         new_value = 2 - (2 / (1 + exp(-pre_scaling*value)))
         return new_value
+    
+    def _invert_and_normalize_linear(self, value):
+        return 1 - (value / REWARD_DISTANCE_CLIPPING)
 
     def __call__(self, template, drawing=None):
         # retrieve both images
@@ -146,8 +166,8 @@ class ImageProcessor:
 
         # save both images in original form
         if _save_images:
-            self.save_image(_drawing, 'original', 'drawing')
-            #self.save_image(_template, 'original', 'template')
+            self.save_image(_drawing, 'original', 'drawing', self.call_counter)
+            self.save_image(_template, 'original', 'template', self.call_counter)
 
         # turn to inverteed binary black and white image
         _simpl_drawing = self._simplify_template(_drawing)
@@ -157,8 +177,8 @@ class ImageProcessor:
 
         # save edited images
         if _save_images and SAVE_SIMPLIFIED:
-            self.save_image(_inv_drawing, 'simplified', 'drawing')
-            self.save_image(_inv_template, 'simplified', 'template')
+            self.save_image(_inv_drawing, 'simplified', 'drawing', self.call_counter)
+            self.save_image(_inv_template, 'simplified', 'template', self.call_counter)
 
         # calc scores
         #similarity_hu_moments = self.calc_similarity_via_hu_moments(_inv_drawing, _inv_template)
@@ -168,7 +188,7 @@ class ImageProcessor:
         # normalize scores
         #norm_similarity_hu_moments = self._normalize(similarity_hu_moments, pre_scaling=50)
         #norm_similarity_convex_hull = self._normalize(similarity_convex_hull, pre_scaling=10)
-        norm_similarity_chamfer_matching = self._invert_and_normalize(similarity_chamfer_matching, pre_scaling=2)
+        norm_similarity_chamfer_matching = self._invert_and_normalize_sigmoid(similarity_chamfer_matching, pre_scaling=2)
 
         #print(f'Hu moments: {norm_similarity_hu_moments}\t\tConvex hull: {norm_similarity_convex_hull}')
 

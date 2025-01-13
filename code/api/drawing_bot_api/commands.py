@@ -121,8 +121,14 @@ class DrawingBot:
                         _x = [_prev_point[0], points[_index][0]]
                         _y = [_prev_point[1], points[_index][1]] 
                         #_color = (0, 0, 1-_color_assignment[_index])
-                        _color = (0, 1-_color_assignment[_index], 0)
-                        _size = np.max([1, (1 - _color_assignment[_index-1]) * 2])
+                        _value = _color_assignment[_index]
+                        if _value >= 0:
+                            _value = np.min([1, _value])
+                            _color = (0, _value, 0)
+                        else:
+                            _value = -np.max([-1, _value])
+                            _color = (0, 0, _value)
+                        _size = np.max([1, np.abs(_value) * 2])
                         #print(f'Color: {_color}\tSize: {_size}')
                         plt.plot(_x, _y, marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
                     _prev_point = points[_index]
