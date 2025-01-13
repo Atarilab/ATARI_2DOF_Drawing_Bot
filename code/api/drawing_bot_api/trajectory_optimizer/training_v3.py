@@ -23,6 +23,18 @@ class LossHistory(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs={}):
         self.losses.append(logs.get('loss'))
 
+class Scheduler:
+    def __init__(self, base_value, gamma):
+        self.base_value = base_value
+        self.gamma = gamma
+        self.call_counter = 0
+
+    def __call__(self, count_up=True):
+        _value = self.base_value * pow(self.gamma, self.call_counter)
+        if count_up:
+            self.call_counter += 1
+        return _value
+
 ############################################################
 # CUSTOM LOSSES ############################################
 ############################################################
@@ -41,6 +53,7 @@ def actor_loss(y_true, y_pred):
     actions = y_true[:, :ACTION_DIM]  # True actions
     advantages = y_true[:, ACTION_DIM:]  # Advantages
     advantages = tf.expand_dims(advantages, axis=-1)
+    sigma = y_true[:, :-1]
 
     # Extract mean and std from the actor's output
     _means = y_pred[:, :]
@@ -63,6 +76,8 @@ def weighted_MSE(y_true, y_pred):
 class Trainer:
     actor = None
     critic = None
+
+    sigma_scheduler = Scheduler(SIGMA, SIGMA_DECAY)
     
     # training histories
     states_history = []
@@ -129,19 +144,18 @@ class Trainer:
 
         return _new_trajectory
 
-    def _get_offsets(self, _states, exploration_factor):
+    def _get_offsets(self, _states, random_action_probability):
         _means = self.actor.predict(_states, batch_size=len(_states), verbose=0)
-        _offsets = np.random.normal(loc=_means, scale=SIGMA)
-
-        """        
-        if exploration_factor:
+        _sigma = self.sigma_scheduler(count_up=True)
+        _offsets = np.random.normal(loc=_means, scale=_sigma)
+    
+        if random_action_probability:
             #_offsets = np.zeros(np.shape(_offsets))
             
             # exchange some offsets with a random offset with probability exploration factor
             for _offset_index in range(len(_offsets)):
-                if np.random.random() < exploration_factor:
-                    _offsets[_offset_index] = (np.random.random(2) * 2 ) - 1
-        """
+                if np.random.random() < random_action_probability:
+                    _offsets[_offset_index] = np.random.normal(loc=0, scale=random_action_probability)
         return _offsets
     
     def _get_state(self, phases, index):
@@ -307,7 +321,7 @@ class Trainer:
         _critic_max = np.max(_critic_predictions_with_actions)
         self.critic_max_log.append(_critic_max)
 
-        print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
+        #print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
 
         #print(f'_v_targets: {_v_targets}, length states: {len(_states)}, length _v_targets: {len(_v_targets)}')
         #print(f'_advantages: {_advantages}, length of advantages: {len(_advantages)}')
@@ -330,7 +344,16 @@ class Trainer:
         _advantage = self._normalize_advantage(_advantage)
         #_advantage = self._normalize_to_range_pos(_advantage)
         _advantage = np.repeat(_advantage, 2, axis=1)
-        _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
+
+        # get sigma
+        _sigma = np.array(self.sigma_scheduler(count_up=False))
+        print(f"Sigma: {_sigma}")
+        _sigma = _sigma.reshape(-1, 1)
+        _sigma = np.repeat(_sigma, 2, axis=1)
+        _sigma = np.repeat(_sigma, len(_actions), axis=0)
+
+        # actor ytrue vector
+        _actor_ytrue = tf.concat([_actions, _advantage, _sigma], axis=1)
 
         """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)
         _states = _states + _noise
@@ -345,55 +368,6 @@ class Trainer:
 
         #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
         return _advantage.T[0]
-
-
-    def _update_actor_and_critic_old(self, reward):
-        gamma = 0.9
-        _states = self.states_history[-1]
-        _actions = self.action_history[-1]
-        _states_reassigned = []
-        _target_values = []
-        _advantage_vectors = []
-
-        if len(_states) != len(_actions):
-            print('Dimensional mismatch between states and trajectory pulled from history')
-            return 1
-        
-        for _t in range(len(_states)):
-            # target value calculation
-            if _t == (len(_states) - 1):
-                v_target = [reward]
-                #v_target = self._reshape_vector(v_target)
-            else:
-                _next_state = self._reshape_vector(_states[_t+1])
-                v_target = reward + gamma * self.critic.predict(_next_state)[0]
-
-            _target_values.append(v_target)
-
-            # append state
-            _state = _states[_t]
-            _states_reassigned.append(_state)
-            _state = self._reshape_vector(_state)
-
-            # Compute advantage for actor update
-            _advantage = self.critic.predict(_state)[0] - v_target[0] # advantage acts as loss function here
-            print(f'Advantage: {_advantage}\tprediction: {self.critic.predict(_state)[0]}\tv_target: {v_target[0]}')
-            _advantage_vector = [_advantage[0], _advantage[0]]
-            print(f'Advantage vector: {_advantage_vector}')
-            #advantage_vector = tf.fill(tf.shape(_offsets[_t]), advantage[0])
-            _advantage_vectors.append(_advantage_vector)
-
-            # Train actor using advantage
-
-        _states_reassigned = np.array(_states_reassigned)
-        _target_values = np.array(_target_values)
-        _advantage_vectors = np.array(_advantage_vectors)
-        
-        print(f'States: {_states_reassigned}')
-        print(f'target value: {_target_values}')
-        print(f'advantage vectors: {_advantage_vectors}')
-        self.critic.fit(_states_reassigned, _target_values, batch_size=10, callbacks=[self.loss_critic_log])
-        self.actor.fit(_states_reassigned, _advantage_vectors, batch_size=10, callbacks=[self.loss_actor_log])
 
     def _reshape_vector(self, state):
         _state = np.array(state)
