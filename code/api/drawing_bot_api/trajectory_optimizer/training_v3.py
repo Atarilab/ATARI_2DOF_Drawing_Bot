@@ -51,15 +51,20 @@ def entropy_loss(y_true, y_pred):
 def actor_loss(y_true, y_pred):
     # y_true contains [actions, advantages]
     actions = y_true[:, :ACTION_DIM]  # True actions
-    advantages = y_true[:, ACTION_DIM:]  # Advantages
+    advantages = y_true[:, ACTION_DIM:2*ACTION_DIM]  # Advantages
     advantages = tf.expand_dims(advantages, axis=-1)
-    sigma = y_true[:, :-1]
 
     # Extract mean and std from the actor's output
-    _means = y_pred[:, :]
+    means = y_pred[:, :ACTION_DIM]
+
+    sigma = 0
+    if TRAINABLE_SIGMA:
+        sigma = ops.abs(y_pred[:, ACTION_DIM:])
+    else:
+        sigma = y_true[:, -ACTION_DIM:]
 
     # Gaussian log-probability of the taken action
-    log_probs = -0.5 * ops.sum(((actions - _means) / (SIGMA + 1e-8))**2 + 2 * ops.log(SIGMA + 1e-8) + ops.log(2 * np.pi), axis=1)
+    log_probs = -0.5 * ops.sum(((actions - means) / (sigma + 1e-8))**2 + 2 * ops.log(sigma + 1e-8) + ops.log(2 * np.pi), axis=1)
 
     # Scale log probability by the advantage
     loss = -log_probs * advantages
@@ -145,9 +150,13 @@ class Trainer:
         return _new_trajectory
 
     def _get_offsets(self, _states, random_action_probability):
-        _means = self.actor.predict(_states, batch_size=len(_states), verbose=0)
+        _actor_output = self.actor.predict(_states, batch_size=len(_states), verbose=0)
+        _means = _actor_output[:, :ACTION_DIM]
         _sigma = self.sigma_scheduler(count_up=True)
-        _offsets = np.random.normal(loc=_means, scale=_sigma)
+        if TRAINABLE_SIGMA:
+            _sigma = _actor_output[:, ACTION_DIM:]
+
+        _offsets = np.random.normal(loc=_means, scale=np.abs(_sigma))
     
         if random_action_probability:
             #_offsets = np.zeros(np.shape(_offsets))
@@ -155,7 +164,7 @@ class Trainer:
             # exchange some offsets with a random offset with probability exploration factor
             for _offset_index in range(len(_offsets)):
                 if np.random.random() < random_action_probability:
-                    _offsets[_offset_index] = np.random.normal(loc=0, scale=random_action_probability)
+                    _offsets[_offset_index] = np.random.normal(loc=0, scale=RANDOM_ACTION_SCALE)
         return _offsets
     
     def _get_state(self, phases, index):
@@ -348,15 +357,18 @@ class Trainer:
         #_advantage = self._normalize_to_range_pos(_advantage)
         _advantage = np.repeat(_advantage, 2, axis=1)
 
-        # get sigma
-        _sigma = np.array(self.sigma_scheduler(count_up=False))
-        print(f"Sigma: {_sigma}")
-        _sigma = _sigma.reshape(-1, 1)
-        _sigma = np.repeat(_sigma, 2, axis=1)
-        _sigma = np.repeat(_sigma, len(_actions), axis=0)
-
         # actor ytrue vector
-        _actor_ytrue = tf.concat([_actions, _advantage, _sigma], axis=1)
+        _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
+
+        if not TRAINABLE_SIGMA:
+            # get sigma
+            _sigma = np.array(self.sigma_scheduler(count_up=False))
+            print(f"Sigma: {_sigma}")
+            _sigma = _sigma.reshape(-1, 1)
+            _sigma = np.repeat(_sigma, 2, axis=1)
+            _sigma = np.repeat(_sigma, len(_actions), axis=0)
+            # actor ytrue vector
+            _actor_ytrue = tf.concat([_actions, _advantage, _sigma], axis=1)
 
         """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)
         _states = _states + _noise
@@ -402,12 +414,16 @@ class Trainer:
         self.critic = Sequential([_inputs_critic, _hidden_2_critic, _hidden_4_critic, _output_critic])
 
         # create actor
+        _actor_output_size = output_size
+        if TRAINABLE_SIGMA:
+            _actor_output_size *= 2
+
         _inputs_actor = keras.layers.Input(shape=(input_size,))
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         #_hidden_3_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         #_hidden_4_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
-        _output_actor = keras.layers.Dense(output_size, activation='tanh')
+        _output_actor = keras.layers.Dense(_actor_output_size, activation='tanh')
         self.actor = Sequential([_inputs_actor, _hidden_1_actor, _hidden_2_actor, _output_actor])
 
         # compile
