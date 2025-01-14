@@ -294,23 +294,26 @@ class Trainer:
 
         #_v_targets = np.full_like(_critic_predictions_with_actions, reward)
         _reward = []
-        _prev_reward = reward[0]
-        for _r in reward:
-            if _r != _prev_reward:
-                _reward.append(_prev_reward)
-            else:
-                _reward.append(0)
-            _prev_reward = _r
+        if SPARSE_REWARDS:
+            _prev_reward = reward[0]
+            for _r in reward:
+                if _r != _prev_reward:
+                    _reward.append(_prev_reward)
+                else:
+                    _reward.append(0)
+                _prev_reward = _r
+        else:
+            _reward = reward
 
         _reward = np.array(_reward).reshape(-1, 1)
 
         _v_targets = gamma * _critic_predictions_with_actions
         _v_targets = _v_targets[1:]
-        #print(f'v targets: {_v_targets}')
         #print(f'rewards: {_reward}')
         _v_targets = _reward[:len(_v_targets)] + _v_targets
         _v_targets = np.append(_v_targets, np.mean(_reward))
         _v_targets = _v_targets.reshape(-1, 1)
+        #print(f'v targets: {_v_targets}')
 
         _critic_mean = np.mean(_critic_predictions_with_actions)
         self.critic_mean_log.append(_critic_mean)
@@ -321,7 +324,7 @@ class Trainer:
         _critic_max = np.max(_critic_predictions_with_actions)
         self.critic_max_log.append(_critic_max)
 
-        #print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
+        print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
 
         #print(f'_v_targets: {_v_targets}, length states: {len(_states)}, length _v_targets: {len(_v_targets)}')
         #print(f'_advantages: {_advantages}, length of advantages: {len(_advantages)}')
@@ -332,14 +335,14 @@ class Trainer:
                 grads = tape.gradient(loss, self.actor.trainable_variables)
                 print(grads)
 
-        _adjusted_states = (np.array(_adjusted_states) + 1) / 2
+        #_adjusted_states = (np.array(_adjusted_states) + 1) / 2
         self.critic.fit(_adjusted_states, _v_targets, batch_size=64, callbacks=[self.loss_critic_log])
         
         # ACTOR #########
 
         # calc advantage
-        #_advantage = _v_targets - _critic_predictions_with_actions
-        _advantage = reward.reshape(-1, 1)
+        _advantage = _v_targets - _critic_predictions_with_actions
+        #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
         _advantage = self._normalize_advantage(_advantage)
         #_advantage = self._normalize_to_range_pos(_advantage)
@@ -393,24 +396,24 @@ class Trainer:
         _inputs_critic = keras.layers.Input(shape=(_critic_input_size,))
         #_hidden_1_critic = keras.layers.LSTM(128, return_sequences=True)
         _hidden_2_critic = keras.layers.Dense(hidden_layer_size, activation="relu")
-        _hidden_3_critic = keras.layers.Dense(128, activation="relu")
+        #_hidden_3_critic = keras.layers.Dense(128, activation="relu")
         _hidden_4_critic = keras.layers.Dense(hidden_layer_size, activation="relu")
         _output_critic = keras.layers.Dense(1, activation='linear')
-        self.critic = Sequential([_inputs_critic, _hidden_2_critic, _hidden_3_critic, _hidden_4_critic, _output_critic])
+        self.critic = Sequential([_inputs_critic, _hidden_2_critic, _hidden_4_critic, _output_critic])
 
         # create actor
         _inputs_actor = keras.layers.Input(shape=(input_size,))
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
-        _hidden_3_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
+        #_hidden_3_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         #_hidden_4_actor = keras.layers.Dense(hidden_layer_size, activation="relu")
         _output_actor = keras.layers.Dense(output_size, activation='tanh')
-        self.actor = Sequential([_inputs_actor, _hidden_1_actor, _hidden_2_actor, _hidden_3_actor, _output_actor])
+        self.actor = Sequential([_inputs_actor, _hidden_1_actor, _hidden_2_actor, _output_actor])
 
         # compile
-        _optimizer_critic = keras.optimizers.Adam(learning_rate=0.000001)
-        _optimizer_actor = keras.optimizers.Adam(learning_rate=0.0001)
-        _loss_critic = keras.losses.Huber() #weighted_MSE
+        _optimizer_critic = keras.optimizers.Adam(learning_rate=LR_CRITIC)
+        _optimizer_actor = keras.optimizers.Adam(learning_rate=LR_ACTOR)
+        _loss_critic = keras.losses.MeanSquaredError() #weighted_MSE
         _loss_actor = actor_loss
 
         self.actor.compile(optimizer=_optimizer_actor, loss=_loss_actor, metrics=['accuracy'])

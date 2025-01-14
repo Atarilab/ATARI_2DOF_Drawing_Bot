@@ -19,17 +19,18 @@ class ImageProcessor:
         cv2.imwrite(_path, image)
         self.log(f'Saved {type} to {_path}')
 
-    def save_images_combined(self, image1, image2, directory, type, nr):
+    def save_images_combined(self, image1, image2, image3, directory, type, nr):
         _script_dir = os.path.dirname(os.path.abspath(__file__))
         _path = os.path.join(_script_dir, f'images/{directory}/{str(nr)}_{type}.jpg')
 
         # Resize the images to have the same height (optional, ensures alignment)
-        height = max(image1.shape[0], image2.shape[0])
+        height = max(image1.shape[0], image2.shape[0], image2.shape[0])
         _image1 = cv2.resize(image1, (int(image1.shape[1] * height / image1.shape[0]), height))
         _image2 = cv2.resize(image2, (int(image2.shape[1] * height / image2.shape[0]), height))
+        _image3 = cv2.resize(image3, (int(image3.shape[1] * height / image3.shape[0]), height))
 
         # Concatenate the images horizontally
-        _combined_image = np.hstack((image1, image2))
+        _combined_image = np.hstack((_image1, _image2, _image3))
         cv2.imwrite(_path, _combined_image)
     
     def _simplify_template(self, image):
