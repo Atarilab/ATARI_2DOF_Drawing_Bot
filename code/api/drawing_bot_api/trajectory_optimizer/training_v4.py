@@ -1,5 +1,5 @@
 from keras.api.models import Sequential, Model
-from keras.api.layers import Dense
+from keras.api.layers import Dense, Lambda
 from keras.api.models import load_model
 import keras
 from keras import ops
@@ -49,24 +49,20 @@ def entropy_loss(y_true, y_pred):
     return advantage_loss - 0.01 * entropy  # Add entropy regularization
 
 def actor_loss(y_true, y_pred):
-    # y_true contains [actions, advantages]
-    actions = y_true[:, :ACTION_DIM]  # True actions
-    advantages = y_true[:, ACTION_DIM:2*ACTION_DIM]  # Advantages
-    advantages = tf.expand_dims(advantages, axis=-1)
+   # y_true contains [actions, advantages]
+    actions = y_true[:, :2]  # Extract actions
+    advantages = y_true[:, 2:]  # Extract advantages
 
-    # Extract mean and std from the actor's output
-    means = y_pred[:, :ACTION_DIM]
+    # y_pred is a list of outputs: [means, sigmas]
+    means = y_pred[:, :2]
+    sigmas = y_pred[:, 2:]
 
-    sigma = 0
-    if TRAINABLE_SIGMA:
-        sigma = ops.abs(y_pred[:, ACTION_DIM:])
-    else:
-        sigma = y_true[:, -ACTION_DIM:]
+    sigmas = (sigmas * SIGMA_SCALING) + SIGMA_LIMIT_MIN
 
-    # Gaussian log-probability of the taken action
-    log_probs = -0.5 * ops.sum(((actions - means) / (sigma + 1e-8))**2 + 2 * ops.log(sigma + 1e-8) + ops.log(2 * np.pi), axis=1)
+    # Compute Gaussian log-probabilities
+    log_probs = -0.5 * ops.sum(((actions - means) / (sigmas + 1e-8))**2 + 2 * ops.log(sigmas + 1e-8) + ops.log(2 * np.pi), axis=1)
 
-    # Scale log probability by the advantage
+    # Scale log-probabilities by advantages
     loss = -log_probs * advantages
     return ops.mean(loss)
 
@@ -135,8 +131,10 @@ class Trainer:
         
     def _apply_offsets(self, offsets, trajectory):
         # calculate difference between amount of trajectory points and amount of offsets
-        _index_offset = len(trajectory) - len(offsets)
-        
+        _index_offset = len(trajectory) - len(offsets[0])
+
+        _offset_x, _offset_y = offsets
+
         # add unaccounted for values to trajectory
         _new_trajectory = [trajectory[0]]
         if USE_PHASE_DIFFERENCE:
@@ -144,31 +142,31 @@ class Trainer:
 
         # apply offset
         for _point_index in range(_index_offset, len(trajectory)):
-            _new_point_x = trajectory[_point_index][0] + OUTPUT_SCALING * offsets[_point_index-_index_offset][0]
-            _new_point_y = trajectory[_point_index][1] + OUTPUT_SCALING * offsets[_point_index-_index_offset][1]
+            _new_point_x = trajectory[_point_index][0] + OUTPUT_SCALING * _offset_x[_point_index-_index_offset]
+            _new_point_y = trajectory[_point_index][1] + OUTPUT_SCALING * _offset_y[_point_index-_index_offset]
             _new_trajectory.append([_new_point_x, _new_point_y])
 
         return _new_trajectory
 
     def _get_offsets(self, _states, random_action_probability):
-        _actor_output = self.actor.predict(_states, batch_size=len(_states), verbose=0)
-        print(_actor_output)
+        _actor_output = np.array(self.actor.predict(_states, batch_size=len(_states), verbose=0)).T
         self.actor_output = _actor_output
-        _means = _actor_output[:, :ACTION_DIM]
-        _sigma = self.sigma_scheduler(count_up=True)
-        if TRAINABLE_SIGMA:
-            _sigma = _actor_output[:, ACTION_DIM:]
+        _mu1, _sigma1, _mu2, _sigma2 = _actor_output
+        _sigma1 = (_sigma1 * SIGMA_SCALING) + SIGMA_LIMIT_MIN
+        _sigma2 = (_sigma2 * SIGMA_SCALING) + SIGMA_LIMIT_MIN
 
-        _offsets = np.random.normal(loc=_means, scale=np.abs(_sigma))
-    
+        _offset_x = np.random.normal(loc=_mu1, scale=np.abs(_sigma1))
+        _offset_y = np.random.normal(loc=_mu2, scale=np.abs(_sigma2))
+        '''
         if random_action_probability:
             #_offsets = np.zeros(np.shape(_offsets))
             
             # exchange some offsets with a random offset with probability exploration factor
-            for _offset_index in range(len(_offsets)):
+            for _offset_index in range(len(_offset_x)):
                 if np.random.random() < random_action_probability:
-                    _offsets[_offset_index] = np.random.normal(loc=0, scale=RANDOM_ACTION_SCALE)
-        return _offsets
+                    _offset_x[_offset_index] = np.random.normal(loc=0, scale=RANDOM_ACTION_SCALE)
+        '''
+        return [_offset_x, _offset_y]
     
     def _get_state(self, phases, index):
             _state = []
@@ -340,17 +338,14 @@ class Trainer:
 
         #print(f'_v_targets: {_v_targets}, length states: {len(_states)}, length _v_targets: {len(_v_targets)}')
         #print(f'_advantages: {_advantages}, length of advantages: {len(_advantages)}')
-        if False:
-            with tf.GradientTape() as tape:
-                y_pred = self.actor(_states)
-                loss = pass_through_loss(_advantage, y_pred)
-                grads = tape.gradient(loss, self.actor.trainable_variables)
-                print(grads)
 
         #_adjusted_states = (np.array(_adjusted_states) + 1) / 2
         self.critic.fit(_adjusted_states, _v_targets, batch_size=64, callbacks=[self.loss_critic_log])
         
         # ACTOR #########
+
+        _actions = np.array(_actions)
+        _actions = _actions.squeeze().T
 
         # calc advantage
         _advantage = _v_targets - _critic_predictions_with_actions
@@ -358,20 +353,10 @@ class Trainer:
         _advantage = _advantage[:len(_actions)]
         _advantage = self._normalize_advantage(_advantage)
         #_advantage = self._normalize_to_range_pos(_advantage)
-        _advantage = np.repeat(_advantage, 2, axis=1)
+        #_advantage = np.repeat(_advantage, 2, axis=1)
 
         # actor ytrue vector
         _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
-
-        if not TRAINABLE_SIGMA:
-            # get sigma
-            _sigma = np.array(self.sigma_scheduler(count_up=False))
-            print(f"Sigma: {_sigma}")
-            _sigma = _sigma.reshape(-1, 1)
-            _sigma = np.repeat(_sigma, 2, axis=1)
-            _sigma = np.repeat(_sigma, len(_actions), axis=0)
-            # actor ytrue vector
-            _actor_ytrue = tf.concat([_actions, _advantage, _sigma], axis=1)
 
         """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)
         _states = _states + _noise
@@ -385,7 +370,7 @@ class Trainer:
         self.adjusted_trajectory_history.clear()
 
         #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
-        return _advantage.T[0], self.actor_output
+        return np.array(_advantage).T[0], self.actor_output
 
     def _reshape_vector(self, state):
         _state = np.array(state)
@@ -412,17 +397,17 @@ class Trainer:
         _hidden_1_critic = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_critic)
         _hidden_2_critic = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_critic)
         _output_critic = keras.layers.Dense(1, activation='linear')(_hidden_2_critic)
-        self.critic = Model(unputs=_inputs_critic, outputs=_output_critic)
+        self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
         _inputs_actor = keras.layers.Input(shape=(input_size,))
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_actor)
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_actor)
-        _output_actor_means = keras.layers.Dense(output_size, activation='tanh')(_hidden_2_actor)
-        _output_actor_sigmas = keras.layers.Dense(output_size, activation='sigmoid')(_hidden_2_actor)
-        if TRAINABLE_SIGMA:
-            self.actor = Model(inputs=_inputs_actor, outputs=[_output_actor_means, _output_actor_sigmas])
-        else:
-            self.actor = Model(inputs=_inputs_actor, outputs=_output_actor_means)
+        _output_mu1 = keras.layers.Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
+        _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1')(_hidden_2_actor)
+        _output_mu2 = keras.layers.Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
+        _output_sigma2 = keras.layers.Dense(1, activation='softplus', name='sigma2')(_hidden_2_actor)
+        merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_sigma1, _output_mu2, _output_sigma2])
+        self.actor = Model(inputs=_inputs_actor, outputs=merged_output)
 
         # compile
         _optimizer_critic = keras.optimizers.Adam(learning_rate=LR_CRITIC)
