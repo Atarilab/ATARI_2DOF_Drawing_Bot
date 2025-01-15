@@ -1,6 +1,7 @@
 from keras.api.models import Sequential, Model
 from keras.api.layers import Dense, Lambda
 from keras.api.models import load_model
+import keras.api.backend as K
 import keras
 from keras import ops
 import numpy as np
@@ -56,11 +57,11 @@ def actor_loss(y_true, y_pred):
     # y_pred is a list of outputs: [means, sigmas]
     means = y_pred[:, :2]
     sigmas = y_pred[:, 2:]
-
-    sigmas = (sigmas * SIGMA_SCALING) + SIGMA_LIMIT_MIN
+    #sigmas = (sigmas * SIGMA_SCALING) + SIGMA_LIMIT_MIN
 
     # Compute Gaussian log-probabilities
     log_probs = -0.5 * ops.sum(((actions - means) / (sigmas + 1e-8))**2 + 2 * ops.log(sigmas + 1e-8) + ops.log(2 * np.pi), axis=1)
+    #tf.print('log probs:', log_probs, summarize=-1)
 
     # Scale log-probabilities by advantages
     loss = -log_probs * advantages
@@ -151,7 +152,7 @@ class Trainer:
     def _get_offsets(self, _states, random_action_probability):
         _actor_output = np.array(self.actor.predict(_states, batch_size=len(_states), verbose=0)).T
         self.actor_output = _actor_output
-        _mu1, _sigma1, _mu2, _sigma2 = _actor_output
+        _mu1, _mu2, _sigma1, _sigma2 = _actor_output
         _sigma1 = (_sigma1 * SIGMA_SCALING) + SIGMA_LIMIT_MIN
         _sigma2 = (_sigma2 * SIGMA_SCALING) + SIGMA_LIMIT_MIN
 
@@ -351,8 +352,9 @@ class Trainer:
         _advantage = _v_targets - _critic_predictions_with_actions
         #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
-        _advantage = self._normalize_advantage(_advantage)
-        #_advantage = self._normalize_to_range_pos(_advantage)
+        #_advantage = self._normalize_advantage(_advantage)
+        #_advantage = self._normalize_to_range_incl_neg(_advantage)
+        _advantage = self._normalize_to_range_pos(_advantage)
         #_advantage = np.repeat(_advantage, 2, axis=1)
 
         # actor ytrue vector
@@ -370,7 +372,7 @@ class Trainer:
         self.adjusted_trajectory_history.clear()
 
         #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
-        return np.array(_advantage).T[0], self.actor_output
+        return np.array(_advantage).T[0], np.array(self.actor_output).T
 
     def _reshape_vector(self, state):
         _state = np.array(state)
@@ -403,10 +405,10 @@ class Trainer:
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_actor)
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_actor)
         _output_mu1 = keras.layers.Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
-        _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1')(_hidden_2_actor)
         _output_mu2 = keras.layers.Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
+        _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1')(_hidden_2_actor)
         _output_sigma2 = keras.layers.Dense(1, activation='softplus', name='sigma2')(_hidden_2_actor)
-        merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_sigma1, _output_mu2, _output_sigma2])
+        merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_mu2, _output_sigma1, _output_sigma2])
         self.actor = Model(inputs=_inputs_actor, outputs=merged_output)
 
         # compile
