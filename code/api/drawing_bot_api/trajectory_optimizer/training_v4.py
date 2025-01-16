@@ -63,9 +63,13 @@ def actor_loss(y_true, y_pred):
     log_probs = -0.5 * ops.sum(((actions - means) / (sigmas + 1e-8))**2 + 2 * ops.log(sigmas + 1e-8) + ops.log(2 * np.pi), axis=1)
     #tf.print('log probs:', log_probs, summarize=-1)
 
+    # calculate entropies
+    action_extreme_penalty = ops.mean(ops.square(actions), axis=1)
+    sigma_entropy = ops.sum(ops.log(sigmas + 1e-8), axis=1)
+
     # Scale log-probabilities by advantages
-    loss = -log_probs * advantages
-    return ops.mean(loss)
+    loss = ops.mean(-log_probs * advantages) + SIGMA_ENTROPY_FACTOR * sigma_entropy + ACTION_EXTREME_PENALTY_FACTOR * action_extreme_penalty
+    return loss
 
 def weighted_MSE(y_true, y_pred):
     _weight = 1
@@ -78,8 +82,6 @@ def weighted_MSE(y_true, y_pred):
 class Trainer:
     actor = None
     critic = None
-
-    sigma_scheduler = Scheduler(SIGMA, SIGMA_DECAY)
     
     # training histories
     states_history = []
@@ -153,8 +155,8 @@ class Trainer:
         _actor_output = np.array(self.actor.predict(_states, batch_size=len(_states), verbose=0)).T
         self.actor_output = _actor_output
         _mu1, _mu2, _sigma1, _sigma2 = _actor_output
-        _sigma1 = (_sigma1 * SIGMA_SCALING) + SIGMA_LIMIT_MIN
-        _sigma2 = (_sigma2 * SIGMA_SCALING) + SIGMA_LIMIT_MIN
+        _sigma1 = np.clip(_sigma1, SIGMA_MIN, SIGMA_MAX)
+        _sigma2 = np.clip(_sigma2, SIGMA_MIN, SIGMA_MAX)
 
         _offset_x = np.random.normal(loc=_mu1, scale=np.abs(_sigma1))
         _offset_y = np.random.normal(loc=_mu2, scale=np.abs(_sigma2))
@@ -277,7 +279,6 @@ class Trainer:
         return self._update_actor_and_critic(reward, train_actor)
 
     def _update_actor_and_critic(self, reward, train_actor):
-        gamma = 0.9
         _states = self.states_history[-1]
         _actions = self.action_history[-1]
 
@@ -305,7 +306,7 @@ class Trainer:
 
         #_v_targets = np.full_like(_critic_predictions_with_actions, reward)
         _reward = []
-        if SPARSE_REWARDS:
+        if SPARSE_REWARDS and GRANULAR_REWARD:
             _prev_reward = reward[0]
             for _r in reward:
                 if _r != _prev_reward:
@@ -318,12 +319,13 @@ class Trainer:
 
         _reward = np.array(_reward).reshape(-1, 1)
 
-        _v_targets = gamma * _critic_predictions_with_actions
+        _v_targets = REWARD_DISCOUNT * _critic_predictions_with_actions
         _v_targets = _v_targets[1:]
-        #print(f'rewards: {_reward}')
-        _v_targets = _reward[:len(_v_targets)] + _v_targets
+        if GRANULAR_REWARD:
+            _v_targets = _reward[:len(_v_targets)] + _v_targets
         _v_targets = np.append(_v_targets, np.mean(_reward))
         _v_targets = _v_targets.reshape(-1, 1)
+
         #print(f'v targets: {_v_targets}')
 
         _critic_mean = np.mean(_critic_predictions_with_actions)
@@ -352,9 +354,9 @@ class Trainer:
         _advantage = _v_targets - _critic_predictions_with_actions
         #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
-        #_advantage = self._normalize_advantage(_advantage)
+        _advantage = self._normalize_advantage(_advantage)
         #_advantage = self._normalize_to_range_incl_neg(_advantage)
-        _advantage = self._normalize_to_range_pos(_advantage)
+        #_advantage = self._normalize_to_range_pos(_advantage)
         #_advantage = np.repeat(_advantage, 2, axis=1)
 
         # actor ytrue vector
@@ -401,13 +403,15 @@ class Trainer:
         _output_critic = keras.layers.Dense(1, activation='linear')(_hidden_2_critic)
         self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
+        _sigma_initializer = keras.initializers.RandomUniform(-SIGMA_INIT_WEIGHT_LIMIT, SIGMA_INIT_WEIGHT_LIMIT)
+
         _inputs_actor = keras.layers.Input(shape=(input_size,))
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_actor)
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_actor)
         _output_mu1 = keras.layers.Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
         _output_mu2 = keras.layers.Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
-        _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1')(_hidden_2_actor)
-        _output_sigma2 = keras.layers.Dense(1, activation='softplus', name='sigma2')(_hidden_2_actor)
+        _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
+        _output_sigma2 = keras.layers.Dense(1, activation='softplus', name='sigma2', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
         merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_mu2, _output_sigma1, _output_sigma2])
         self.actor = Model(inputs=_inputs_actor, outputs=merged_output)
 
