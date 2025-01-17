@@ -64,7 +64,7 @@ def actor_loss(y_true, y_pred):
     #tf.print('log probs:', log_probs, summarize=-1)
 
     # calculate entropies
-    action_extreme_penalty = ops.mean(ops.square(actions), axis=1)
+    action_extreme_penalty = ops.average(ops.square(means))
     sigma_entropy = ops.sum(ops.log(sigmas + 1e-8), axis=1)
 
     # Scale log-probabilities by advantages
@@ -289,6 +289,7 @@ class Trainer:
 
         if COMBINE_STATES_FOR_CRITIC:
             _adjusted_states = np.hstack((_adjusted_states, _states))
+            _original_states = np.hstack((_states, _states))
 
             if ADD_PROGRESS_INDICATOR:
                 _num_of_states = np.shape(_adjusted_states)[0]
@@ -296,10 +297,11 @@ class Trainer:
                 _progress_indicators = _progress_indicators / _num_of_states
                 _progress_indicators = _progress_indicators.reshape(-1 ,1)
                 _adjusted_states = np.hstack((_adjusted_states, _progress_indicators))
+                _original_states = np.hstack((_original_states, _progress_indicators))
 
             #print(f'Stacked states: {_adjusted_states}')
 
-        #_critic_predictions_without_actions = self.critic.predict(np.array(_states), verbose=0)
+        _critic_predictions_without_actions = self.critic.predict(np.array(_original_states), verbose=0)
         _critic_predictions_with_actions = self.critic.predict(np.array(_adjusted_states), verbose=0)
 
         # CRITIC ########
@@ -351,7 +353,7 @@ class Trainer:
         _actions = _actions.squeeze().T
 
         # calc advantage
-        _advantage = _v_targets - _critic_predictions_with_actions
+        _advantage = _v_targets - _critic_predictions_without_actions
         #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
         _advantage = self._normalize_advantage(_advantage)
@@ -389,7 +391,7 @@ class Trainer:
     #####################################################################
 
     def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
-        # create critic
+        # create critic ################################################
 
         _critic_input_size = input_size
         if COMBINE_STATES_FOR_CRITIC:
@@ -403,19 +405,26 @@ class Trainer:
         _output_critic = keras.layers.Dense(1, activation='linear')(_hidden_2_critic)
         self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
-        _sigma_initializer = keras.initializers.RandomUniform(-SIGMA_INIT_WEIGHT_LIMIT, SIGMA_INIT_WEIGHT_LIMIT)
+        # create actor ##################################################
 
         _inputs_actor = keras.layers.Input(shape=(input_size,))
         _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_actor)
         _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_actor)
+
+
         _output_mu1 = keras.layers.Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
         _output_mu2 = keras.layers.Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
+
+        _sigma_initializer = keras.initializers.RandomUniform(-SIGMA_INIT_WEIGHT_LIMIT, SIGMA_INIT_WEIGHT_LIMIT)
         _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
+        _output_sigma1 = Lambda(lambda x: SIGMA_OUTPUT_SCALING * x)(_output_sigma1)
         _output_sigma2 = keras.layers.Dense(1, activation='softplus', name='sigma2', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
+        _output_sigma2 = Lambda(lambda x: SIGMA_OUTPUT_SCALING * x)(_output_sigma2)
+
         merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_mu2, _output_sigma1, _output_sigma2])
         self.actor = Model(inputs=_inputs_actor, outputs=merged_output)
 
-        # compile
+        # compile #######################################################
         _optimizer_critic = keras.optimizers.Adam(learning_rate=LR_CRITIC)
         _optimizer_actor = keras.optimizers.Adam(learning_rate=LR_ACTOR)
         _loss_critic = keras.losses.MeanSquaredError() #weighted_MSE

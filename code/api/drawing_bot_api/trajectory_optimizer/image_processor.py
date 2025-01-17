@@ -138,7 +138,7 @@ class ImageProcessor:
         return _rewards
 
     
-    def _invert_and_normalize_sigmoid(self, value, pre_scaling=50):
+    def _invert_and_normalize_sigmoid(self, value, pre_scaling=1):
         # modified sigmoid function
         # since there are no negative values from shapeMatching the sigmoid is scaled and inverted
         # So values close to 1 represent high similarity and values close to 0 represent low similarity
@@ -186,10 +186,13 @@ class ImageProcessor:
         #similarity_convex_hull = self.calc_similarity_via_convex_hull(_inv_drawing, _inv_template)
         similarity_chamfer_matching = self.calc_similiarity_via_chamfer_matching(_inv_drawing, _inv_template)
 
+        if similarity_chamfer_matching > REWARD_DISTANCE_CLIPPING:
+            similarity_chamfer_matching = REWARD_DISTANCE_CLIPPING
+
         # normalize scores
         #norm_similarity_hu_moments = self._normalize(similarity_hu_moments, pre_scaling=50)
         #norm_similarity_convex_hull = self._normalize(similarity_convex_hull, pre_scaling=10)
-        norm_similarity_chamfer_matching = self._invert_and_normalize_sigmoid(similarity_chamfer_matching, pre_scaling=2)
+        norm_similarity_chamfer_matching = self._invert_and_normalize_sigmoid(similarity_chamfer_matching, pre_scaling=1)
 
         #print(f'Hu moments: {norm_similarity_hu_moments}\t\tConvex hull: {norm_similarity_convex_hull}')
 
