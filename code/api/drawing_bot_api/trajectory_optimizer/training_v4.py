@@ -66,9 +66,10 @@ def actor_loss(y_true, y_pred):
     # calculate entropies
     action_extreme_penalty = ops.average(ops.square(means))
     sigma_entropy = ops.sum(ops.log(sigmas + 1e-8), axis=1)
+    sigma_penalty = ops.average(ops.square(sigmas))
 
     # Scale log-probabilities by advantages
-    loss = ops.mean(-log_probs * advantages) + SIGMA_ENTROPY_FACTOR * sigma_entropy + ACTION_EXTREME_PENALTY_FACTOR * action_extreme_penalty
+    loss = ops.mean(-log_probs * advantages) + SIGMA_ENTROPY_FACTOR * sigma_entropy + ACTION_EXTREME_PENALTY_FACTOR * action_extreme_penalty + SIGMA_PENALTY_FACTOR * sigma_penalty
     return loss
 
 def weighted_MSE(y_true, y_pred):

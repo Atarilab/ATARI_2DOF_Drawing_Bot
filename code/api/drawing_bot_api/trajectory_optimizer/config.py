@@ -1,16 +1,16 @@
-# model parameters
+# model parameters ####################################
 INPUT_DIM = 30
 NUM_LEADING_POINTS = 5
 ACTION_DIM = 2
 HIDDEN_LAYER_DIM = 256
 
-# Traing parameters
+# Traing parameters ###################################
 REWARD_DISCOUNT = 0.999
 LR_CRITIC = 0.0001
-LR_ACTOR = 0.001
+LR_ACTOR = 0.0001
 OUTPUT_SCALING = 3
 
-# Exploration settings
+# Exploration settings #################################
 RANDOM_ACTION_PROBABILITY = 0
 RANDOM_ACTION_DECAY = 0.99
 RANDOM_ACTION_SCALE = 0.02
@@ -21,10 +21,12 @@ SIGMA_INIT_WEIGHT_LIMIT = 0.1
 SIGMA_OUTPUT_SCALING = 0.15
 
 SIGMA_ENTROPY_FACTOR = 0
+SIGMA_PENALTY_FACTOR = 0.3
 ACTION_EXTREME_PENALTY_FACTOR = 0.95
 
-# Options
+# Options ##############################################
 VERBOSE = 0
+NUM_OF_CYCLES = 600
 
 USE_PHASE_DIFFERENCE = False
 NORMALIZE_STATES = True
