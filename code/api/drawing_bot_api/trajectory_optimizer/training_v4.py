@@ -68,7 +68,7 @@ def actor_loss(y_true, y_pred):
 
     # calculate entropies
     action_penalty = ops.average(ops.square(means))
-    sigma_entropy = ops.sum(ops.log(sigmas + 1e-8), axis=1)
+    sigma_entropy = ops.sum(ops.log(sigmas + 1e-8))
     sigma_penalty = ops.average(ops.square(sigmas))
 
     if False:
