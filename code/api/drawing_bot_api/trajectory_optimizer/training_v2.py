@@ -299,7 +299,7 @@ class Trainer:
     # MODEL CREATION, SAVING and LOADING
     #####################################################################
 
-    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
+    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM_ACTOR):
         # create critic
         _initializer_critic = 'random_normal'
         _inputs_critic = keras.layers.Input(shape=(input_size,))

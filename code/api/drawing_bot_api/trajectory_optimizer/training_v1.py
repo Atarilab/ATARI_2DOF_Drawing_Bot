@@ -122,7 +122,7 @@ class Trainer:
         self.input_buffer = None
         self.action_buffer = None
 
-    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
+    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM_ACTOR):
                 
         _kernel_initializer = 'zeros'#keras.initializers.RandomUniform(minval=-0.005, maxval=0.005, seed=None) # inititalizing weights
 

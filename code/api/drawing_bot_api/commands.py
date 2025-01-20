@@ -128,7 +128,7 @@ class DrawingBot:
                         else:
                             _value = -np.max([-1, _value])
                             _color = (0, 0, _value)
-                        _size = np.max([1, np.abs(_value) * 2])
+                        _size = 1#np.max([1, np.abs(_value) * 2])
                         #print(f'Color: {_color}\tSize: {_size}')
                         plt.plot(_x, _y, marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
                     _prev_point = points[_index]

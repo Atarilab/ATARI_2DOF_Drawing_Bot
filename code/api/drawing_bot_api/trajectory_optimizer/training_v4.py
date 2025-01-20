@@ -53,10 +53,13 @@ def actor_loss(y_true, y_pred):
    # y_true contains [actions, advantages]
     actions = y_true[:, :2]  # Extract actions
     advantages = y_true[:, 2:]  # Extract advantages
+    advantages = ops.mean(advantages, axis=-1)
 
     # y_pred is a list of outputs: [means, sigmas]
     means = y_pred[:, :2]
     sigmas = y_pred[:, 2:]
+    sigmas = tf.clip_by_value(sigmas, SIGMA_MIN, SIGMA_MAX)
+    sigmas_mean = ops.mean(sigmas, axis=-1)
     #sigmas = (sigmas * SIGMA_SCALING) + SIGMA_LIMIT_MIN
 
     # Compute Gaussian log-probabilities
@@ -64,13 +67,20 @@ def actor_loss(y_true, y_pred):
     #tf.print('log probs:', log_probs, summarize=-1)
 
     # calculate entropies
-    action_extreme_penalty = ops.average(ops.square(means))
+    action_penalty = ops.average(ops.square(means))
     sigma_entropy = ops.sum(ops.log(sigmas + 1e-8), axis=1)
     sigma_penalty = ops.average(ops.square(sigmas))
 
+    if False:
+        tf.print('log probs', log_probs)
+        tf.print('action penalty', action_penalty)
+        tf.print('sigma penalty', sigma_penalty)
+
     # Scale log-probabilities by advantages
-    loss = ops.mean(-log_probs * advantages) + SIGMA_ENTROPY_FACTOR * sigma_entropy + ACTION_EXTREME_PENALTY_FACTOR * action_extreme_penalty + SIGMA_PENALTY_FACTOR * sigma_penalty
-    return loss
+    means_loss = ops.mean(-log_probs * advantages) + ACTION_PENALTY_FACTOR * action_penalty
+    sigmas_loss = ops.max([-advantages, advantages*sigmas_mean]) * ADVANTAGE_FACTOR + SIGMA_ENTROPY_FACTOR * sigma_entropy + SIGMA_PENALTY_FACTOR * sigma_penalty
+
+    return means_loss + sigmas_loss
 
 def weighted_MSE(y_true, y_pred):
     _weight = 1
@@ -85,6 +95,7 @@ class Trainer:
     critic = None
     
     # training histories
+    trajectory_history = []
     states_history = []
     action_history = []
     reward_history = []
@@ -119,6 +130,7 @@ class Trainer:
 
     def adjust_trajectory(self, trajectory, exploration_factor=0):
         np.set_printoptions(threshold=np.inf)
+        self.trajectory_history.append(trajectory)
         _phases = self._points_to_phases(trajectory)#                        # turn two dimensional points of trajectory into phases (one dimensional)
         #print(f'Phases: {_phases}')
         _states = np.array(self._get_states(_phases))                       # batch phases together into sequences of phases with dimension input_size
@@ -161,7 +173,7 @@ class Trainer:
 
         _offset_x = np.random.normal(loc=_mu1, scale=np.abs(_sigma1))
         _offset_y = np.random.normal(loc=_mu2, scale=np.abs(_sigma2))
-        '''
+
         if random_action_probability:
             #_offsets = np.zeros(np.shape(_offsets))
             
@@ -169,7 +181,7 @@ class Trainer:
             for _offset_index in range(len(_offset_x)):
                 if np.random.random() < random_action_probability:
                     _offset_x[_offset_index] = np.random.normal(loc=0, scale=RANDOM_ACTION_SCALE)
-        '''
+
         return [_offset_x, _offset_y]
     
     def _get_state(self, phases, index):
@@ -277,9 +289,89 @@ class Trainer:
     #####################################################################
 
     def train(self, reward, train_actor=True):
-        return self._update_actor_and_critic(reward, train_actor)
+        if TRANSFORMER_CRITIC:
+            return self._update_actor_and_critic_transformer_based(reward, train_actor)
+        else:
+            return self._update_actor_and_critic_standard(reward, train_actor)
+    
+    def _update_actor_and_critic_transformer_based(self, reward, train_actor):
+        _original_trajectory = self.trajectory_history[-1]
+        _original_phases = self._points_to_phases(_original_trajectory)
+        _states = self.states_history[-1]
+        _actions = self.action_history[-1]
 
-    def _update_actor_and_critic(self, reward, train_actor):
+        # generate states where the offset is applied to (and only to) the center point, therefore representing clear state transistions
+        _adjusted_trajectory = self.adjusted_trajectory_history[-1]
+        _adjusted_phases = self._points_to_phases(_adjusted_trajectory)
+
+        # CRITIC ########################################################################################################################
+
+        _critic_input = np.zeros(TRANSFORMER_CRITIC_DIM)
+        _critic_input[:len(_original_phases)] = _original_phases
+        _critic_input[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_adjusted_phases)] = _adjusted_phases
+        _critic_input = _critic_input.reshape(-1, 1).T
+
+        _critic_baseline_input = np.zeros(TRANSFORMER_CRITIC_DIM)
+        _critic_baseline_input[:len(_original_phases)] = _original_phases
+        _critic_baseline_input[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_original_phases)] = _original_phases
+        _critic_baseline_input = _critic_baseline_input.reshape(-1, 1).T
+
+        #_reward = np.zeros(TRANSFORMER_CRITIC_DIM)
+        #_reward[:len(_original_phases)] = np.repeat(reward, len(_original_phases))
+        #_reward[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_original_phases)] = np.repeat(reward, len(_original_phases))
+        _reward = np.repeat(reward, int(TRANSFORMER_CRITIC_DIM/2))
+        _reward = _reward.reshape(-1, 1).T
+
+        self.critic.fit(_critic_input, _reward, batch_size=64, callbacks=[self.loss_critic_log])
+
+        _critic_predictions_with_actions = self.critic.predict(_critic_input, verbose=0)
+        _critic_predictions_without_actions = self.critic.predict(_critic_baseline_input, verbose=0)
+
+        _critic_mean = np.mean(_critic_predictions_with_actions)
+        self.critic_mean_log.append(_critic_mean)
+        _critic_var = np.var(_critic_predictions_with_actions)
+        self.critic_var_log.append(_critic_var)
+        _critic_min = np.min(_critic_predictions_with_actions)
+        self.critic_min_log.append(_critic_min)
+        _critic_max = np.max(_critic_predictions_with_actions)
+        self.critic_max_log.append(_critic_max)
+        print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
+        
+        # ACTOR #####################################################################################################################
+
+        _actions = np.array(_actions)
+        _actions = _actions.squeeze().T
+
+        # calc advantage
+        _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
+        _advantage = _advantage.reshape(-1, 1)
+        _advantage = _advantage[:len(_actions)]
+        _advantage = self._normalize_advantage_keep_mean(_advantage)
+        #_advantage = self._normalize_advantage(_advantage)
+        #_advantage = self._normalize_to_range_incl_neg(_advantage)
+        #_advantage = np.repeat(_advantage, 2, axis=1)
+
+        # actor ytrue vector
+        _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
+
+        """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)
+        _states = _states + _noise
+        _states = _states * 0.1 # scale input states to make network more sensitive to small changes """
+
+        if train_actor:
+            self.actor.fit(_states, _actor_ytrue, callbacks=[self.loss_actor_log])
+
+        self.action_history.clear()
+        self.states_history.clear()
+        self.adjusted_trajectory_history.clear()
+        self.trajectory_history.clear()
+
+        #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
+        return np.array(_advantage).T[0], np.array(self.actor_output).T
+
+    def _update_actor_and_critic_standard(self, reward, train_actor):
+        _original_trajectory = self.trajectory_history[-1]
+        _original_phases = self._points_to_phases(_original_trajectory)
         _states = self.states_history[-1]
         _actions = self.action_history[-1]
 
@@ -300,14 +392,11 @@ class Trainer:
                 _adjusted_states = np.hstack((_adjusted_states, _progress_indicators))
                 _original_states = np.hstack((_original_states, _progress_indicators))
 
-            #print(f'Stacked states: {_adjusted_states}')
-
         _critic_predictions_without_actions = self.critic.predict(np.array(_original_states), verbose=0)
         _critic_predictions_with_actions = self.critic.predict(np.array(_adjusted_states), verbose=0)
 
         # CRITIC ########
 
-        #_v_targets = np.full_like(_critic_predictions_with_actions, reward)
         _reward = []
         if SPARSE_REWARDS and GRANULAR_REWARD:
             _prev_reward = reward[0]
@@ -324,12 +413,17 @@ class Trainer:
 
         _v_targets = REWARD_DISCOUNT * _critic_predictions_with_actions
         _v_targets = _v_targets[1:]
-        if GRANULAR_REWARD:
+        if STEP_WISE_REWARD:
+            _reward = np.repeat(_reward, len(_v_targets), axis=0)
+            _v_targets = _reward[:len(_v_targets)] + _v_targets
+        if GRANULAR_REWARD or STEP_WISE_REWARD:
             _v_targets = _reward[:len(_v_targets)] + _v_targets
         _v_targets = np.append(_v_targets, np.mean(_reward))
         _v_targets = _v_targets.reshape(-1, 1)
 
-        #print(f'v targets: {_v_targets}')
+        # With these value targets the network learns to predict the reward of each state directly instead of predicting the cumulative reward
+        if not CUMULATIVE_VALUE_TRAINING:
+            _v_targets = np.repeat(_reward, len(_v_targets), axis=0)
 
         _critic_mean = np.mean(_critic_predictions_with_actions)
         self.critic_mean_log.append(_critic_mean)
@@ -342,12 +436,8 @@ class Trainer:
 
         print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
 
-        #print(f'_v_targets: {_v_targets}, length states: {len(_states)}, length _v_targets: {len(_v_targets)}')
-        #print(f'_advantages: {_advantages}, length of advantages: {len(_advantages)}')
-
-        #_adjusted_states = (np.array(_adjusted_states) + 1) / 2
-        self.critic.fit(_adjusted_states, _v_targets, batch_size=64, callbacks=[self.loss_critic_log])
-        
+        self.critic.fit(_adjusted_states, _v_targets, batch_size=len(_adjusted_states), callbacks=[self.loss_critic_log])
+            
         # ACTOR #########
 
         _actions = np.array(_actions)
@@ -355,11 +445,12 @@ class Trainer:
 
         # calc advantage
         _advantage = _v_targets - _critic_predictions_without_actions
+        if not CUMULATIVE_VALUE_TRAINING:
+            _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
         #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
-        _advantage = self._normalize_advantage(_advantage)
-        #_advantage = self._normalize_to_range_incl_neg(_advantage)
-        #_advantage = self._normalize_to_range_pos(_advantage)
+        _advantage = self._normalize_advantage_keep_mean(_advantage)
+        #_advantage = self._normalize_advantage(_advantage)
         #_advantage = np.repeat(_advantage, 2, axis=1)
 
         # actor ytrue vector
@@ -375,6 +466,7 @@ class Trainer:
         self.action_history.clear()
         self.states_history.clear()
         self.adjusted_trajectory_history.clear()
+        self.trajectory_history.clear()
 
         #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
         return np.array(_advantage).T[0], np.array(self.actor_output).T
@@ -384,33 +476,43 @@ class Trainer:
         _state = _state.reshape(1, -1)
         return _state
     
-    def _normalize_advantage(self, advantage):
+    def _normalize_advantage_subtract_mean(self, advantage):
         return (advantage - tf.reduce_mean(advantage)) / (tf.math.reduce_std(advantage) + 1e-8)
+    
+    def _normalize_advantage_keep_mean(self, advantage):
+        return advantage / (tf.math.reduce_std(advantage) + 1e-8)
 
     #####################################################################
     # MODEL CREATION, SAVING and LOADING
     #####################################################################
 
-    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM):
+    def new_model(self, input_size=INPUT_DIM, output_size=ACTION_DIM, hidden_layer_size=HIDDEN_LAYER_DIM_ACTOR):
         # create critic ################################################
+        if TRANSFORMER_CRITIC:
+            _inputs_critic = keras.layers.Input(shape=(TRANSFORMER_CRITIC_DIM,))
+            _hidden_1_critic = keras.layers.Dense(TRANSFORMER_CRITIC_DIM, activation="relu")(_inputs_critic)
+            _hidden_2_critic = keras.layers.Dense(TRANSFORMER_CRITIC_DIM, activation="relu")(_hidden_1_critic)
+            _output_critic = keras.layers.Dense(int(TRANSFORMER_CRITIC_DIM/2), activation='sigmoid')(_hidden_2_critic)
+            self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
-        _critic_input_size = input_size
-        if COMBINE_STATES_FOR_CRITIC:
-            _critic_input_size = _critic_input_size * 2
-        if ADD_PROGRESS_INDICATOR:
-            _critic_input_size += 1
+        else:
+            _critic_input_size = input_size
+            if COMBINE_STATES_FOR_CRITIC:
+                _critic_input_size = _critic_input_size * 2
+            if ADD_PROGRESS_INDICATOR:
+                _critic_input_size += 1
 
-        _inputs_critic = keras.layers.Input(shape=(_critic_input_size,))
-        _hidden_1_critic = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_critic)
-        _hidden_2_critic = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_critic)
-        _output_critic = keras.layers.Dense(1, activation='linear')(_hidden_2_critic)
-        self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
+            _inputs_critic = keras.layers.Input(shape=(_critic_input_size,))
+            _hidden_1_critic = keras.layers.Dense(HIDDEN_LAYER_DIM_CRITIC, activation="relu")(_inputs_critic)
+            _hidden_2_critic = keras.layers.Dense(HIDDEN_LAYER_DIM_CRITIC, activation="relu")(_hidden_1_critic)
+            _output_critic = keras.layers.Dense(1, activation='linear')(_hidden_2_critic)
+            self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
         # create actor ##################################################
 
         _inputs_actor = keras.layers.Input(shape=(input_size,))
-        _hidden_1_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_inputs_actor)
-        _hidden_2_actor = keras.layers.Dense(hidden_layer_size, activation="relu")(_hidden_1_actor)
+        _hidden_1_actor = keras.layers.Dense(HIDDEN_LAYER_DIM_ACTOR, activation="relu")(_inputs_actor)
+        _hidden_2_actor = keras.layers.Dense(HIDDEN_LAYER_DIM_ACTOR, activation="relu")(_hidden_1_actor)
 
 
         _output_mu1 = keras.layers.Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
