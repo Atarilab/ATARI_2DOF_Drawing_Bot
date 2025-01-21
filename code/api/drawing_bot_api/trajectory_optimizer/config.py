@@ -8,8 +8,8 @@ HIDDEN_LAYER_DIM_CRITIC =       256
 TRANSFORMER_CRITIC_DIM =        2000
 
 # Traing parameters ###################################
-REWARD_DISCOUNT =               1
-LR_CRITIC =                     0.0001
+REWARD_DISCOUNT =               0.9
+LR_CRITIC =                     0.00001
 LR_ACTOR =                      0.0001
 
 # Exploration settings #################################
@@ -23,7 +23,7 @@ SIGMA_MIN =                     0.0001
 SIGMA_MAX =                     1
 SIGMA_INIT_WEIGHT_LIMIT =       0.05
 SIGMA_OUTPUT_SCALING =          0.3
-SIGMA_TRUE_SCALING =            0.2
+SIGMA_TRUE_SCALING =            0.05
 
 SIGMA_ENTROPY_FACTOR =          0#.0005 # positive values enforce larger sigmas, negative values penalize larger sigmas
 SIGMA_PENALTY_FACTOR =          0
@@ -34,7 +34,7 @@ GRADIENT_CLIPPING_LIMIT =       2
 
 # Options ##############################################
 VERBOSE =                       0
-NUM_OF_CYCLES =                 500
+NUM_OF_CYCLES =                 1500
 
 USE_PHASE_DIFFERENCE =          False
 NORMALIZE_STATES =              True
@@ -49,7 +49,7 @@ REWARD_NORMALIZATION_MODE =     'sigmoid' # options: 'linear', 'sigmoid'
 GRANULAR_REWARD =               False
 GRANULAR_REWARD_RESOLUTION =    25
 SPARSE_REWARDS =                False
-CUMULATIVE_VALUE_TRAINING =     False
+CUMULATIVE_VALUE_TRAINING =     True
 STEP_WISE_REWARD =              False
 
 TRAINABLE_SIGMA =               True

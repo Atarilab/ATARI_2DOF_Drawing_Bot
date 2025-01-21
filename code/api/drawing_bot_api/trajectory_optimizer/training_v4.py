@@ -216,11 +216,13 @@ class Trainer:
             _phases = np.array(self._get_phase_difference(phases))
             _normalize_factor = pi
         if NORMALIZE_STATES:
-            _phases = np.array(_phases) / _normalize_factor
+            _phases = (np.array(_phases) / _normalize_factor) + 0.5
 
         _phases = np.append(np.zeros(INPUT_DIM - NUM_LEADING_POINTS), _phases)
         window_size = INPUT_DIM
         _states = np.array([_phases[i:i + window_size] for i in range(len(_phases) - window_size + 1)])
+        
+        _states = self._shift_to_range(_states, 0.5)
         return _states
     
     def _get_phase_difference(self, phases):
@@ -270,7 +272,7 @@ class Trainer:
             _adjusted_phases = self._get_phase_difference(_adjusted_phases)
             _normalize_factor = pi
         if NORMALIZE_STATES:
-            _adjusted_phases = np.array(_adjusted_phases) / _normalize_factor
+            _adjusted_phases = (np.array(_adjusted_phases) / _normalize_factor) + 0.5
         
         if len(states) != len(_adjusted_phases):
             self.log(f'def _get_adjusted_states(): "Length of states ({len(states)}) and adjusted phases ({len(_adjusted_phases)}) does not match"')
@@ -278,6 +280,7 @@ class Trainer:
         for _index in range(len(states)):
             _new_states[_index][:INPUT_DIM-NUM_LEADING_POINTS] = _adjusted_phases[_index:_index+INPUT_DIM-NUM_LEADING_POINTS]
         
+        _new_states = self._shift_to_range(_new_states, 0.5)
         return _new_states
     
     def _normalize_to_range_incl_neg(self, data):
@@ -285,6 +288,11 @@ class Trainer:
     
     def _normalize_to_range_pos(self, data):
         return (data - np.min(data)) / (np.max(data) - np.min(data))
+    
+    def _shift_to_range(self, data, inv_factor):
+        """Input data must be in range [0, 1]"""
+        return (data * (1 - inv_factor)) + inv_factor
+
 
     #####################################################################
     # TRAINING METHODS
