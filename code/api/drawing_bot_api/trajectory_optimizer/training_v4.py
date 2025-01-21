@@ -1,5 +1,5 @@
 from keras.api.models import Sequential, Model
-from keras.api.layers import Dense, Lambda
+from keras.api.layers import Dense, Lambda, Conv1D, MaxPool1D, Flatten
 from keras.api.models import load_model
 import keras.api.backend as K
 import keras
@@ -70,6 +70,7 @@ def actor_loss(y_true, y_pred):
     action_penalty = ops.average(ops.square(means))
     sigma_entropy = ops.sum(ops.log(sigmas + 1e-8))
     sigma_penalty = ops.average(ops.square(sigmas))
+    advantage_penalty = ops.max(ops.stack((-advantages, advantages*sigmas_mean), axis=1), axis=1)
 
     if False:
         tf.print('log probs', log_probs)
@@ -78,9 +79,10 @@ def actor_loss(y_true, y_pred):
 
     # Scale log-probabilities by advantages
     means_loss = ops.mean(-log_probs * advantages) + ACTION_PENALTY_FACTOR * action_penalty
-    sigmas_loss = ops.max([-advantages, advantages*sigmas_mean]) * ADVANTAGE_FACTOR + SIGMA_ENTROPY_FACTOR * sigma_entropy + SIGMA_PENALTY_FACTOR * sigma_penalty
-
-    return means_loss + sigmas_loss
+    sigmas_loss = advantage_penalty * ADVANTAGE_FACTOR - SIGMA_ENTROPY_FACTOR * sigma_entropy #+ SIGMA_PENALTY_FACTOR * sigma_penalty
+    loss = means_loss + sigmas_loss
+    loss = ops.clip(loss, -GRADIENT_CLIPPING_LIMIT, GRADIENT_CLIPPING_LIMIT)
+    return loss
 
 def weighted_MSE(y_true, y_pred):
     _weight = 1
@@ -373,27 +375,31 @@ class Trainer:
         _original_trajectory = self.trajectory_history[-1]
         _original_phases = self._points_to_phases(_original_trajectory)
         _states = self.states_history[-1]
-        _actions = self.action_history[-1]
+        _actions = np.array(self.action_history[-1])
 
-        # generate states where the offset is applied to (and only to) the center point, therefore representing clear state transistions
-        _adjusted_trajectory = self.adjusted_trajectory_history[-1]
-        _adjusted_phases = self._points_to_phases(_adjusted_trajectory)
-        _adjusted_states = self._get_adjusted_states(_states, _adjusted_phases)
+        if False:
+            # generate states where the offset is applied to (and only to) the center point, therefore representing clear state transistions
+            _adjusted_trajectory = self.adjusted_trajectory_history[-1]
+            _adjusted_phases = self._points_to_phases(_adjusted_trajectory)
+            _adjusted_states = self._get_adjusted_states(_states, _adjusted_phases)
+            
+            if COMBINE_STATES_FOR_CRITIC:
+                _adjusted_states = np.hstack((_adjusted_states, _states))
+                _original_states = np.hstack((_states, _states))
 
-        if COMBINE_STATES_FOR_CRITIC:
-            _adjusted_states = np.hstack((_adjusted_states, _states))
-            _original_states = np.hstack((_states, _states))
+                if ADD_PROGRESS_INDICATOR:
+                    _num_of_states = np.shape(_adjusted_states)[0]
+                    _progress_indicators = np.arange(_num_of_states)
+                    _progress_indicators = _progress_indicators / _num_of_states
+                    _progress_indicators = _progress_indicators.reshape(-1 ,1)
+                    _adjusted_states = np.hstack((_adjusted_states, _progress_indicators))
+                    _original_states = np.hstack((_original_states, _progress_indicators))
 
-            if ADD_PROGRESS_INDICATOR:
-                _num_of_states = np.shape(_adjusted_states)[0]
-                _progress_indicators = np.arange(_num_of_states)
-                _progress_indicators = _progress_indicators / _num_of_states
-                _progress_indicators = _progress_indicators.reshape(-1 ,1)
-                _adjusted_states = np.hstack((_adjusted_states, _progress_indicators))
-                _original_states = np.hstack((_original_states, _progress_indicators))
+        _critic_states_with_actions = np.hstack((_states, _actions.T))
+        _critic_states_without_actions = np.hstack((_states, np.zeros(np.shape(_actions.T))))
 
-        _critic_predictions_without_actions = self.critic.predict(np.array(_original_states), verbose=0)
-        _critic_predictions_with_actions = self.critic.predict(np.array(_adjusted_states), verbose=0)
+        _critic_predictions_without_actions = self.critic.predict(np.array(_critic_states_without_actions), verbose=0)
+        _critic_predictions_with_actions = self.critic.predict(np.array(_critic_states_with_actions), verbose=0)
 
         # CRITIC ########
 
@@ -410,13 +416,14 @@ class Trainer:
             _reward = reward
 
         _reward = np.array(_reward).reshape(-1, 1)
+        _v_targets = None
 
         _v_targets = REWARD_DISCOUNT * _critic_predictions_with_actions
         _v_targets = _v_targets[1:]
         if STEP_WISE_REWARD:
             _reward = np.repeat(_reward, len(_v_targets), axis=0)
             _v_targets = _reward[:len(_v_targets)] + _v_targets
-        if GRANULAR_REWARD or STEP_WISE_REWARD:
+        if GRANULAR_REWARD:
             _v_targets = _reward[:len(_v_targets)] + _v_targets
         _v_targets = np.append(_v_targets, np.mean(_reward))
         _v_targets = _v_targets.reshape(-1, 1)
@@ -436,7 +443,7 @@ class Trainer:
 
         print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
 
-        self.critic.fit(_adjusted_states, _v_targets, batch_size=len(_adjusted_states), callbacks=[self.loss_critic_log])
+        self.critic.fit(_critic_states_with_actions, _v_targets, batch_size=len(_critic_states_with_actions), callbacks=[self.loss_critic_log])
             
         # ACTOR #########
 
@@ -453,8 +460,14 @@ class Trainer:
         #_advantage = self._normalize_advantage(_advantage)
         #_advantage = np.repeat(_advantage, 2, axis=1)
 
-        # actor ytrue vector
         _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
+
+        if REWARD_LABELING:
+            _inv_reward = 1 - _critic_predictions_with_actions
+            _means_true = _actions - (_inv_reward * np.sign(_actions))
+            _sigmas_true = self.actor_output[2:].T - self._normalize_to_range_incl_neg(_critic_predictions_with_actions) * SIGMA_TRUE_SCALING
+            _actor_ytrue = tf.concat((_means_true, _sigmas_true), axis=1)
+            _advantage = self._normalize_to_range_incl_neg(_critic_predictions_with_actions) # for plotting
 
         """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)
         _states = _states + _noise
@@ -496,11 +509,14 @@ class Trainer:
             self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
         else:
-            _critic_input_size = input_size
-            if COMBINE_STATES_FOR_CRITIC:
-                _critic_input_size = _critic_input_size * 2
-            if ADD_PROGRESS_INDICATOR:
-                _critic_input_size += 1
+            if False:
+                _critic_input_size = input_size
+                if COMBINE_STATES_FOR_CRITIC:
+                    _critic_input_size = _critic_input_size * 2
+                if ADD_PROGRESS_INDICATOR:
+                    _critic_input_size += 1
+
+            _critic_input_size = input_size + ACTION_DIM
 
             _inputs_critic = keras.layers.Input(shape=(_critic_input_size,))
             _hidden_1_critic = keras.layers.Dense(HIDDEN_LAYER_DIM_CRITIC, activation="relu")(_inputs_critic)
@@ -510,18 +526,21 @@ class Trainer:
 
         # create actor ##################################################
 
-        _inputs_actor = keras.layers.Input(shape=(input_size,))
-        _hidden_1_actor = keras.layers.Dense(HIDDEN_LAYER_DIM_ACTOR, activation="relu")(_inputs_actor)
-        _hidden_2_actor = keras.layers.Dense(HIDDEN_LAYER_DIM_ACTOR, activation="relu")(_hidden_1_actor)
+        _inputs_actor = keras.layers.Input(shape=(input_size, 1))
+        _conv_layer_actor = Conv1D(filters=32, kernel_size=5, activation='relu', padding='same')(_inputs_actor)
+        _pool_layer_actor = MaxPool1D(pool_size=2)(_conv_layer_actor)
+        _flattened_layer_actor = Flatten()(_pool_layer_actor)
 
+        _hidden_1_actor = Dense(HIDDEN_LAYER_DIM_ACTOR, activation="relu")(_flattened_layer_actor)
+        _hidden_2_actor = Dense(HIDDEN_LAYER_DIM_ACTOR, activation="relu")(_hidden_1_actor)
 
-        _output_mu1 = keras.layers.Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
-        _output_mu2 = keras.layers.Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
+        _output_mu1 = Dense(1, activation='tanh', name='mu1')(_hidden_2_actor)
+        _output_mu2 = Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
 
         _sigma_initializer = keras.initializers.RandomUniform(-SIGMA_INIT_WEIGHT_LIMIT, SIGMA_INIT_WEIGHT_LIMIT)
-        _output_sigma1 = keras.layers.Dense(1, activation='softplus', name='sigma1', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
+        _output_sigma1 = Dense(1, activation='softplus', name='sigma1', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
         _output_sigma1 = Lambda(lambda x: SIGMA_OUTPUT_SCALING * x)(_output_sigma1)
-        _output_sigma2 = keras.layers.Dense(1, activation='softplus', name='sigma2', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
+        _output_sigma2 = Dense(1, activation='softplus', name='sigma2', kernel_initializer=_sigma_initializer)(_hidden_2_actor)
         _output_sigma2 = Lambda(lambda x: SIGMA_OUTPUT_SCALING * x)(_output_sigma2)
 
         merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_mu2, _output_sigma1, _output_sigma2])
@@ -530,8 +549,10 @@ class Trainer:
         # compile #######################################################
         _optimizer_critic = keras.optimizers.Adam(learning_rate=LR_CRITIC)
         _optimizer_actor = keras.optimizers.Adam(learning_rate=LR_ACTOR)
-        _loss_critic = keras.losses.MeanSquaredError() #weighted_MSE
-        _loss_actor = actor_loss
+        _loss_critic = keras.losses.MeanAbsoluteError() #weighted_MSE
+        _loss_actor = keras.losses.MeanSquaredError() 
+        if not REWARD_LABELING:
+            _loss_actor = actor_loss
 
         self.actor.compile(optimizer=_optimizer_actor, loss=_loss_actor, metrics=['accuracy'])
         self.critic.compile(optimizer=_optimizer_critic, loss=_loss_critic, metrics=['accuracy'])
