@@ -25,8 +25,8 @@ SIGMA_INIT_WEIGHT_LIMIT =       1
 SIGMA_OUTPUT_SCALING =          0.1
 SIGMA_TRUE_SCALING =            1
 MEANS_TRUE_SCALING =            0.1
-CRITIC_PRED_SCALING_FACTOR =    3
-CRITIC_PRED_BIAS =              0 # CHANGE THIS NEXT 
+CRITIC_PRED_SCALING_FACTOR =    10
+CRITIC_PRED_BIAS =              0.07 # CHANGE THIS NEXT 
 
 
 SIGMA_ENTROPY_FACTOR =          0 #.0005 # positive values enforce larger sigmas, negative values penalize larger sigmas
@@ -38,7 +38,7 @@ GRADIENT_CLIPPING_LIMIT =       2
 
 # Options ##############################################
 VERBOSE =                       0
-NUM_OF_CYCLES =                 600
+NUM_OF_CYCLES =                 400
 
 USE_PHASE_DIFFERENCE =          False
 NORMALIZE_STATES =              True

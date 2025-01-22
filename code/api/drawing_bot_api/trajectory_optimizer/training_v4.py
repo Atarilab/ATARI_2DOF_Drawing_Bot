@@ -492,7 +492,7 @@ class Trainer:
         if REWARD_LABELING:
             _inv_reward = 1 + np.clip(_advantage, -1, 0) #_critic_predictions_with_actions
             _means_true = _actions - _inv_reward * np.sign(_actions) #* MEANS_TRUE_SCALING
-            _adjusted_critic_pred = np.tanh(CRITIC_PRED_SCALING_FACTOR * self._normalize_advantage_subtract_mean(_critic_predictions_with_actions) + 0.1)
+            _adjusted_critic_pred = (np.tanh(CRITIC_PRED_SCALING_FACTOR * self._normalize_advantage_subtract_mean(_critic_predictions_with_actions) + 0.1) + 1) / 2
             _sigmas_true = self.actor_output[2:].T * 0 - SIGMA_TRUE_SCALING * _adjusted_critic_pred
             _actor_ytrue = tf.concat((_means_true, _sigmas_true), axis=1)
             _advantage = _adjusted_critic_pred # for plotting
