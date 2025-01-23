@@ -84,6 +84,36 @@ def actor_loss(y_true, y_pred):
     loss = ops.clip(loss, -GRADIENT_CLIPPING_LIMIT, GRADIENT_CLIPPING_LIMIT)
     return loss
 
+def actor_loss_simplified(y_true, y_pred):
+   # y_true contains [actions, advantages]
+    actions = y_true[:, :2]  # Extract actions
+    advantages = y_true[:, 2:4]  # Extract advantages
+    sigmas = y_true[:, -2:]
+    advantages = ops.mean(advantages, axis=-1)
+
+    sigmas = tf.clip_by_value(sigmas, SIGMA_MIN, SIGMA_MAX)
+
+    # y_pred is a list of outputs: [means, sigmas]
+    means = y_pred[0]
+    #sigmas = (sigmas * SIGMA_SCALING) + SIGMA_LIMIT_MIN
+
+    # Compute Gaussian log-probabilities
+    log_probs = -0.5 * ops.sum(((actions - means) / (sigmas + 1e-8))**2 + 2 * ops.log(sigmas + 1e-8) + ops.log(2 * np.pi), axis=1)
+    #tf.print('log probs:', log_probs, summarize=-1)
+
+    if False:
+        tf.print('log probs', log_probs)
+        tf.print('action penalty', action_penalty)
+        tf.print('sigma penalty', sigma_penalty)
+
+    action_penalty = ops.sum(ops.abs(means))
+
+    # Scale log-probabilities by advantages
+    means_loss = ops.mean(-log_probs * advantages) + ACTION_PENALTY_FACTOR * action_penalty
+    loss = means_loss
+    loss = ops.clip(loss, -GRADIENT_CLIPPING_LIMIT, GRADIENT_CLIPPING_LIMIT)
+    return loss
+
 def weighted_MSE(y_true, y_pred):
     _weight = 1
     return ops.mean(_weight * ops.square(y_true - y_pred))
@@ -121,7 +151,8 @@ class Trainer:
     sigma_max_log = []
     means_mean_log = []
     means_min_log = []
-    means_max_log = [] 
+    means_max_log = []
+    sigma_log = []
 
     def __init__(self, model=None, **kwargs):
         if model == None:
@@ -173,8 +204,8 @@ class Trainer:
         return _new_trajectory
     
     def _log_sigmas_and_means(self, actor_output):
-        _sigmas = actor_output[2:]
-        _means = actor_output[:2]
+        _means = actor_output[0]
+        _sigmas = actor_output[1]
         self.sigma_mean_log.append(np.mean(_sigmas))
         self.sigma_min_log.append(np.min(_sigmas))
         self.sigma_max_log.append(np.max(_sigmas))
@@ -183,15 +214,24 @@ class Trainer:
         self.means_max_log.append(np.max(_means))
 
     def _get_offsets(self, _states, random_action_probability):
-        _actor_output = np.array(self.actor.predict(_states, batch_size=len(_states), verbose=0)).T
+        _actor_output = np.array(self.actor.predict(_states, batch_size=len(_states), verbose=0))
         self.actor_output = _actor_output
         self._log_sigmas_and_means(_actor_output)
-        _mu1, _mu2, _sigma1, _sigma2 = _actor_output
-        _sigma1 = np.clip(_sigma1, SIGMA_MIN, SIGMA_MAX)
-        _sigma2 = np.clip(_sigma2, SIGMA_MIN, SIGMA_MAX)
+        _mus, _sigmas = _actor_output
 
-        _offset_x = np.random.normal(loc=_mu1, scale=np.abs(_sigma1))
-        _offset_y = np.random.normal(loc=_mu2, scale=np.abs(_sigma2))
+        _sigma1 = np.clip(_sigmas.T[0], SIGMA_MIN, SIGMA_MAX)
+        _sigma2 = np.clip(_sigmas.T[1], SIGMA_MIN, SIGMA_MAX)
+
+        if USE_CRITIC_INSTEAD_OF_SIGMA:
+            _critic_states = np.hstack((_states, _mus))
+            _critic_output = np.array(self.critic.predict(_critic_states))
+            _adjusted_critic_pred = (1 - ((np.tanh(CRITIC_PRED_SCALING_FACTOR * (self._normalize_advantage_subtract_mean(_critic_output) + CRITIC_PRED_BIAS)) + 1) / 2)) * SIGMA_MAX
+            self.sigma_log = _adjusted_critic_pred
+            _sigma1 = np.squeeze(_adjusted_critic_pred)
+            _sigma2 = np.squeeze(_adjusted_critic_pred)
+
+        _offset_x = np.random.normal(loc=_mus.T[0], scale=np.abs(_sigma1))
+        _offset_y = np.random.normal(loc=_mus.T[1], scale=np.abs(_sigma2))
 
         if random_action_probability:
             #_offsets = np.zeros(np.shape(_offsets))
@@ -478,31 +518,32 @@ class Trainer:
         _actions = _actions.squeeze().T
 
         # calc advantage
-        _advantage = _v_targets - _critic_predictions_without_actions
+        #_advantage = _v_targets - _critic_predictions_without_actions
+        _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
         if not CUMULATIVE_VALUE_TRAINING:
             _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
         #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
         _advantage = self._normalize_advantage_keep_mean(_advantage)
         #_advantage = self._normalize_advantage(_advantage)
-        #_advantage = np.repeat(_advantage, 2, axis=1)
 
         _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
 
         if REWARD_LABELING:
-            _inv_reward = 1 + np.clip(_advantage, -1, 0) #_critic_predictions_with_actions
-            _means_true = _actions - _inv_reward * np.sign(_actions) #* MEANS_TRUE_SCALING
-            _adjusted_critic_pred = (np.tanh(CRITIC_PRED_SCALING_FACTOR * self._normalize_advantage_subtract_mean(_critic_predictions_with_actions) + 0.1) + 1) / 2
-            _sigmas_true = self.actor_output[2:].T * 0 - SIGMA_TRUE_SCALING * _adjusted_critic_pred
-            _actor_ytrue = tf.concat((_means_true, _sigmas_true), axis=1)
-            _advantage = _adjusted_critic_pred # for plotting
+            _inv_reward = np.where(_advantage > 0, 1, 0) #_critic_predictions_with_actions
+            _means_true = np.where(_advantage > 0, _actions, self.actor_output[0] * (1 + _advantage)) #_actions * _inv_reward #* np.sign(_actions)
+            _adjusted_critic_pred = (np.tanh(CRITIC_PRED_SCALING_FACTOR * (self._normalize_advantage_subtract_mean(_critic_predictions_with_actions) + CRITIC_PRED_BIAS)) + 1) / 2
+            _sigmas_true = self.actor_output[1] * 0 + (1 - _adjusted_critic_pred) * SIGMA_TRUE_SCALING
+            _sigmas_true = np.where(self.actor_output[0] > SIGMA_MAX, SIGMA_MAX, _sigmas_true)
+            _advantage = _advantage #_adjusted_critic_pred # for plotting
+            #_actor_ytrue = tf.concat([_actions, _advantage, self.sigma_log], axis=1)
 
         """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)
         _states = _states + _noise
         _states = _states * 0.1 # scale input states to make network more sensitive to small changes """
 
         if train_actor:
-            self.actor.fit(_states, _actor_ytrue, batch_size=64, callbacks=[self.loss_actor_log])
+            self.actor.fit(_states, [_means_true, _sigmas_true], batch_size=128, callbacks=[self.loss_actor_log])
 
         self.action_history.clear()
         self.states_history.clear()
@@ -510,7 +551,7 @@ class Trainer:
         self.trajectory_history.clear()
 
         #return np.abs(self._normalize_to_range_incl_neg(_critic_predictions_with_actions).T)[0]
-        return np.array(_advantage).T[0], np.array(self.actor_output).T
+        return np.array(_advantage).T[0], np.array(_adjusted_critic_pred)
 
     def _reshape_vector(self, state):
         _state = np.array(state)
@@ -549,7 +590,7 @@ class Trainer:
             _inputs_critic = keras.layers.Input(shape=(_critic_input_size,))
             _hidden_1_critic = keras.layers.Dense(HIDDEN_LAYER_DIM_CRITIC, activation="relu")(_inputs_critic)
             _hidden_2_critic = keras.layers.Dense(HIDDEN_LAYER_DIM_CRITIC, activation="relu")(_hidden_1_critic)
-            _output_critic = keras.layers.Dense(1, activation='linear')(_hidden_2_critic)
+            _output_critic = keras.layers.Dense(1, activation='softplus')(_hidden_2_critic)
             self.critic = Model(inputs=_inputs_critic, outputs=_output_critic)
 
         # create actor ##################################################
@@ -566,25 +607,28 @@ class Trainer:
         _output_mu2 = Dense(1, activation='tanh', name='mu2')(_hidden_2_actor)
 
         _sigma_initializer = keras.initializers.RandomUniform(-SIGMA_INIT_WEIGHT_LIMIT, SIGMA_INIT_WEIGHT_LIMIT)
-        _hidden_sigma = Dense(HIDDEN_LAYER_DIM_ACTOR, activation='relu')(_hidden_2_actor)
-        _output_sigma1 = Dense(1, activation='softplus', name='sigma1', kernel_initializer=_sigma_initializer)(_hidden_sigma)
+        _hidden_1_sigma = Dense(HIDDEN_LAYER_DIM_ACTOR, activation='relu')(_hidden_2_actor)
+        _hidden_2_sigma = Dense(HIDDEN_LAYER_DIM_ACTOR, activation='relu')(_hidden_1_sigma)
+        _output_sigma1 = Dense(1, activation='softplus', name='sigma1', kernel_initializer=_sigma_initializer)(_hidden_2_sigma)
         _output_sigma1 = Lambda(lambda x: SIGMA_OUTPUT_SCALING * x)(_output_sigma1)
-        _output_sigma2 = Dense(1, activation='softplus', name='sigma2', kernel_initializer=_sigma_initializer)(_hidden_sigma)
+        _output_sigma2 = Dense(1, activation='softplus', name='sigma2', kernel_initializer=_sigma_initializer)(_hidden_2_sigma)
         _output_sigma2 = Lambda(lambda x: SIGMA_OUTPUT_SCALING * x)(_output_sigma2)
 
-        merged_output = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_output")([_output_mu1, _output_mu2, _output_sigma1, _output_sigma2])
-        self.actor = Model(inputs=_inputs_actor, outputs=merged_output)
+        merged_mus = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_mus")([_output_mu1, _output_mu2])
+        merged_sigmas = Lambda(lambda x: tf.concat(x, axis=-1), name="merged_sigmas")([_output_sigma1, _output_sigma2])
+        self.actor = Model(inputs=_inputs_actor, outputs=[merged_mus, merged_sigmas])
 
         # compile #######################################################
         _optimizer_critic = keras.optimizers.Adam(learning_rate=LR_CRITIC)
         _optimizer_actor = keras.optimizers.Adam(learning_rate=LR_ACTOR)
         _loss_critic = keras.losses.MeanAbsoluteError() #weighted_MSE
-        _loss_actor = keras.losses.MeanAbsoluteError() 
+        _loss_mus = keras.losses.MeanSquaredError() 
+        _loss_sigmas = keras.losses.MeanAbsoluteError() 
 
         if not REWARD_LABELING:
             _loss_actor = actor_loss
 
-        self.actor.compile(optimizer=_optimizer_actor, loss=_loss_actor, metrics=['accuracy'])
+        self.actor.compile(optimizer=_optimizer_actor, loss=[_loss_mus, _loss_sigmas])
         self.critic.compile(optimizer=_optimizer_critic, loss=_loss_critic, metrics=['accuracy'])
 
     def load_model(self, model_id):
