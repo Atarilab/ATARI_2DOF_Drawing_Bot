@@ -373,15 +373,15 @@ class Trainer:
 
         # CRITIC ########################################################################################################################
 
-        _critic_input = np.zeros(TRANSFORMER_CRITIC_DIM)
-        _critic_input[:len(_original_phases)] = _original_phases
-        _critic_input[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_adjusted_phases)] = _adjusted_phases
-        _critic_input = _critic_input.reshape(-1, 1).T
+        _critic_action_based_input = np.zeros(TRANSFORMER_CRITIC_DIM)
+        _critic_action_based_input[:len(_original_phases)] = _original_phases
+        _critic_action_based_input[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_adjusted_phases)] = _adjusted_phases
+        _critic_action_based_input = _critic_action_based_input.reshape(-1, 1).T
 
-        _critic_baseline_input = np.zeros(TRANSFORMER_CRITIC_DIM)
-        _critic_baseline_input[:len(_original_phases)] = _original_phases
-        _critic_baseline_input[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_original_phases)] = _original_phases
-        _critic_baseline_input = _critic_baseline_input.reshape(-1, 1).T
+        _critic_policy_based_input = np.zeros(TRANSFORMER_CRITIC_DIM)
+        _critic_policy_based_input[:len(_original_phases)] = _original_phases
+        _critic_policy_based_input[int(TRANSFORMER_CRITIC_DIM/2):int(TRANSFORMER_CRITIC_DIM/2)+len(_original_phases)] = _original_phases
+        _critic_policy_based_input = _critic_policy_based_input.reshape(-1, 1).T
 
         #_reward = np.zeros(TRANSFORMER_CRITIC_DIM)
         #_reward[:len(_original_phases)] = np.repeat(reward, len(_original_phases))
@@ -389,18 +389,18 @@ class Trainer:
         _reward = np.repeat(reward, int(TRANSFORMER_CRITIC_DIM/2))
         _reward = _reward.reshape(-1, 1).T
 
-        self.critic.fit(_critic_input, _reward, batch_size=64, callbacks=[self.loss_critic_log])
+        self.critic.fit(_critic_action_based_input, _reward, batch_size=64, callbacks=[self.loss_critic_log])
 
-        _critic_predictions_with_actions = self.critic.predict(_critic_input, verbose=0)
-        _critic_predictions_without_actions = self.critic.predict(_critic_baseline_input, verbose=0)
+        _critic_predictions_action_taken = self.critic.predict(_critic_action_based_input, verbose=0)
+        _critic_predictions_policy = self.critic.predict(_critic_policy_based_input, verbose=0)
 
-        _critic_mean = np.mean(_critic_predictions_with_actions)
+        _critic_mean = np.mean(_critic_predictions_action_taken)
         self.critic_mean_log.append(_critic_mean)
-        _critic_var = np.var(_critic_predictions_with_actions)
+        _critic_var = np.var(_critic_predictions_action_taken)
         self.critic_var_log.append(_critic_var)
-        _critic_min = np.min(_critic_predictions_with_actions)
+        _critic_min = np.min(_critic_predictions_action_taken)
         self.critic_min_log.append(_critic_min)
-        _critic_max = np.max(_critic_predictions_with_actions)
+        _critic_max = np.max(_critic_predictions_action_taken)
         self.critic_max_log.append(_critic_max)
         print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
         
@@ -410,7 +410,7 @@ class Trainer:
         _actions = _actions.squeeze().T
 
         # calc advantage
-        _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
+        _advantage = _critic_predictions_action_taken - _critic_predictions_policy
         _advantage = _advantage.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
         _advantage = self._normalize_advantage_keep_mean(_advantage)
@@ -460,11 +460,11 @@ class Trainer:
                     _adjusted_states = np.hstack((_adjusted_states, _progress_indicators))
                     _original_states = np.hstack((_original_states, _progress_indicators))
 
-        _critic_states_with_actions = np.hstack((_states, _actions.T))
-        _critic_states_without_actions = np.hstack((_states, np.zeros(np.shape(_actions.T))))
+        _critic_states_action_based = np.hstack((_states, _actions.T))
+        _critic_states_policy_based = np.hstack((_states, self.actor_output[0]))
 
-        _critic_predictions_without_actions = self.critic.predict(np.array(_critic_states_without_actions), verbose=0)
-        _critic_predictions_with_actions = self.critic.predict(np.array(_critic_states_with_actions), verbose=0)
+        _critic_predictions_policy = self.critic.predict(np.array(_critic_states_policy_based), verbose=0)
+        _critic_predictions_action_taken = self.critic.predict(np.array(_critic_states_action_based), verbose=0)
 
         # CRITIC ########
 
@@ -482,7 +482,7 @@ class Trainer:
 
         _reward = np.array(_reward).reshape(-1, 1)
 
-        _v_targets = REWARD_DISCOUNT * _critic_predictions_without_actions
+        _v_targets = REWARD_DISCOUNT * _critic_predictions_policy
         _v_targets = _v_targets[1:]
 
         if STEP_WISE_REWARD: # This means the final reward is given at every point
@@ -499,18 +499,18 @@ class Trainer:
         if not CUMULATIVE_VALUE_TRAINING:
             _v_targets = np.repeat(_reward, len(_v_targets), axis=0)
 
-        _critic_mean = np.mean(_critic_predictions_with_actions)
+        _critic_mean = np.mean(_critic_predictions_action_taken)
         self.critic_mean_log.append(_critic_mean)
-        _critic_var = np.var(_critic_predictions_with_actions)
+        _critic_var = np.var(_critic_predictions_action_taken)
         self.critic_var_log.append(_critic_var)
-        _critic_min = np.min(_critic_predictions_with_actions)
+        _critic_min = np.min(_critic_predictions_action_taken)
         self.critic_min_log.append(_critic_min)
-        _critic_max = np.max(_critic_predictions_with_actions)
-        self.critic_max_log.append(np.max(_critic_predictions_with_actions))
+        _critic_max = np.max(_critic_predictions_action_taken)
+        self.critic_max_log.append(np.max(_critic_predictions_action_taken))
 
         print(f'Critic | mean: {_critic_mean}\tvar: {_critic_var}\tmin: {_critic_min}\tmax: {_critic_max}')
 
-        self.critic.fit(_critic_states_with_actions, _v_targets, batch_size=len(_critic_states_with_actions), callbacks=[self.loss_critic_log])
+        self.critic.fit(_critic_states_action_based, _v_targets, batch_size=len(_critic_states_action_based), callbacks=[self.loss_critic_log])
             
         # ACTOR #########
 
@@ -519,23 +519,23 @@ class Trainer:
 
         # calc advantage
         #_advantage = _v_targets - _critic_predictions_without_actions
-        _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
+        _advantage = _critic_predictions_action_taken - _critic_predictions_policy
         if not CUMULATIVE_VALUE_TRAINING:
-            _advantage = _critic_predictions_with_actions - _critic_predictions_without_actions
+            _advantage = _critic_predictions_action_taken - _critic_predictions_policy
         #_advantage = reward.reshape(-1, 1)
         _advantage = _advantage[:len(_actions)]
-        _advantage = self._normalize_advantage_keep_mean(_advantage)
+        _advantage = self._normalize_advantage_subtract_mean(_advantage)
         #_advantage = self._normalize_advantage(_advantage)
 
         _actor_ytrue = tf.concat([_actions, _advantage], axis=1)
 
         if REWARD_LABELING:
-            _inv_reward = np.where(_advantage > 0, 1, 0) #_critic_predictions_with_actions
-            _means_true = np.where(_advantage > 0, _actions, self.actor_output[0] * (1 + _advantage)) #_actions * _inv_reward #* np.sign(_actions)
-            _adjusted_critic_pred = (np.tanh(CRITIC_PRED_SCALING_FACTOR * (self._normalize_advantage_subtract_mean(_critic_predictions_with_actions) + CRITIC_PRED_BIAS)) + 1) / 2
+            _non_linear_advantage = np.tanh(_advantage * 100) #_critic_predictions_with_actions
+            _means_true = np.where(_non_linear_advantage > 0, _actions, self.actor_output[0] * (1 + _non_linear_advantage)) #_actions * _inv_reward #* np.sign(_actions)
+            _adjusted_critic_pred = (np.tanh(CRITIC_PRED_SCALING_FACTOR * (self._normalize_advantage_subtract_mean(_critic_predictions_action_taken) + CRITIC_PRED_BIAS)) + 1) / 2
             _sigmas_true = self.actor_output[1] * 0 + (1 - _adjusted_critic_pred) * SIGMA_TRUE_SCALING
             _sigmas_true = np.where(self.actor_output[0] > SIGMA_MAX, SIGMA_MAX, _sigmas_true)
-            _advantage = _advantage #_adjusted_critic_pred # for plotting
+            _advantage = 1 + _non_linear_advantage #_adjusted_critic_pred # for plotting
             #_actor_ytrue = tf.concat([_actions, _advantage, self.sigma_log], axis=1)
 
         """ _noise = np.random.normal(loc=0.0, scale=0.1, size=_states.shape)

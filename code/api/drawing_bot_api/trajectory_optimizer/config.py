@@ -8,9 +8,9 @@ HIDDEN_LAYER_DIM_CRITIC =       256
 TRANSFORMER_CRITIC_DIM =        2000
 
 # Traing parameters ###################################
-REWARD_DISCOUNT =               0.85
+REWARD_DISCOUNT =               1
 LR_CRITIC =                     0.0001
-LR_ACTOR =                      0.0001
+LR_ACTOR =                      0.00001
 
 # Exploration settings #################################
 OUTPUT_SCALING =                3
@@ -20,7 +20,7 @@ RANDOM_ACTION_DECAY =           0.996
 RANDOM_ACTION_SCALE =           0.5
 
 SIGMA_MIN =                     0.01
-SIGMA_MAX =                     0.15
+SIGMA_MAX =                     0.13
 SIGMA_INIT_WEIGHT_LIMIT =       1
 SIGMA_OUTPUT_SCALING =          0.1
 SIGMA_TRUE_SCALING =            50
@@ -39,7 +39,7 @@ GRADIENT_CLIPPING_LIMIT =       10000
 
 # Options ##############################################
 VERBOSE =                       0
-NUM_OF_CYCLES =                 700
+NUM_OF_CYCLES =                 500
 
 USE_PHASE_DIFFERENCE =          True
 NORMALIZE_STATES =              True
