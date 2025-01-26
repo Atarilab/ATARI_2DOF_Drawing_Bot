@@ -121,7 +121,11 @@ class DrawingBot:
                         _x = [_prev_point[0], points[_index][0]]
                         _y = [_prev_point[1], points[_index][1]] 
                         #_color = (0, 0, 1-_color_assignment[_index])
-                        _value = _color_assignment[_index]
+                        _value = 0
+                        try:
+                            _value = _color_assignment[_index]
+                        except:
+                            pass
                         if _value >= 0:
                             _value = np.min([1, _value])
                             _color = (0, _value, 0)

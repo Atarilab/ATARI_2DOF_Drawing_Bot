@@ -5,8 +5,8 @@ from drawing_bot_api.delta_utils import ik_delta
 from drawing_bot_api.logger import Log
 import time
 
-MIN_NUM_OF_SHAPES = 2
-MAX_NUM_OF_SHAPES = 6
+MIN_NUM_OF_SHAPES = 3
+MAX_NUM_OF_SHAPES = 5
 RESTING_POINT = [0, 40]
 START_POINT = [0, 100]
 
