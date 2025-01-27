@@ -68,9 +68,13 @@ class Simulator:
         return _new_points
 
 class ExponentialDecaySimulator:
-    def __call__(self, points, gain, **kwargs):
-        _points = self.apply_error_rule(points, gain, **kwargs)
-        return _points
+    def __call__(self, points, type, **kwargs):
+        _points = None
+        if type == 'fourier':
+            _points, _data = self.apply_compensation_fourier(points, **kwargs)
+        else:
+            _points, _data = self.apply_compensation(points, **kwargs)
+        return _points, _data
         
     def _get_phase(self, point, prev_point):
         _pointing_vector = [point[0]-prev_point[0], point[1]-prev_point[1]]
@@ -112,7 +116,50 @@ class ExponentialDecaySimulator:
         _phases = np.arctan2(_direction_vectors[1], _direction_vectors[0])
         return _phases
     
-    def apply_error_rule(self, points, gain=5, damping=0.25, freq=1, non_linearity=1, length=60):
+    def get_fourier_series(self, coefficients, length):
+        a0, a1, b1, a2, b2, a3, b3 = coefficients
+        _sample_points = np.arange(length)
+        _fourier_series = a0 + a1 * np.cos(_sample_points) + b1 * np.sin(_sample_points) + a2 * np.cos(2 * _sample_points) + b2 * np.sin(2 * _sample_points) + a3 * np.cos(3 * _sample_points) + b3 * np.sin(3 * _sample_points)
+        return _fourier_series
+    
+    def apply_compensation_fourier(self, points, parameters, length=60):
+        # format all parameters
+        _points = np.array(points)
+        _fourier_coefficients = parameters[:7]
+        _exponential_decay = parameters[7]
+
+        # calculate and process phases
+        _phases = self._points_to_phases(points)
+        _normals_of_phases = np.array([np.cos(_phases + np.pi/2), np.sin(_phases + np.pi/2)]).T
+        _normals_of_phases = np.append(_normals_of_phases, np.zeros((1, 2)), axis=0)
+
+        # calculate and process phase differences
+        _phase_differences = self._get_phase_difference(_phases)
+        _normalized_phase_differences = _phase_differences / np.pi
+        _weighted_normalized_phase_differences = np.power(np.abs(_normalized_phase_differences), 1/3)
+        _weighted_normalized_phase_differences = np.where(_normalized_phase_differences < 0, -_weighted_normalized_phase_differences, _weighted_normalized_phase_differences)
+
+        # calculate fourier series
+        _fourier_series = self.get_fourier_series(_fourier_coefficients, length)
+
+        # apply exponential decay to fourier series
+        _sample_points = np.arange(length)
+        _exponential_fourier_series = (1 / np.exp((_exponential_decay) * _sample_points)) * _fourier_series
+
+        _point_offsets = np.zeros(np.shape(_phases))
+        for _index in range(len(_point_offsets)-1):
+            _points_left = len(_point_offsets) - _index
+            _range = length if _points_left >= length else _points_left
+            _point_offsets[_index:_index+length] = _point_offsets[_index:_index+length] + (_exponential_fourier_series[:_range] * _weighted_normalized_phase_differences[_index])
+
+        _point_offsets = np.append(0, _point_offsets)
+        _point_offsets = _point_offsets.reshape(-1, 1)
+
+        _new_points = self._phase_offsets_to_points(_point_offsets, _normals_of_phases, _points)
+        
+        return _new_points, _exponential_fourier_series
+    
+    def apply_compensation(self, points, gain=5, damping=0.25, freq=1, fade_in=0, tanh_scaling=1, length=60):
         _points = np.array(points)
 
         _phases = self._points_to_phases(points)
@@ -122,23 +169,22 @@ class ExponentialDecaySimulator:
 
         _phase_differences = self._get_phase_difference(_phases)
         _normalized_phase_differences = _phase_differences / np.pi
-        _weighted_normalized_phase_differences = 0.5 + np.tanh(_normalized_phase_differences * non_linearity) / 2
+        #_weighted_normalized_phase_differences = 0.5 + np.tanh(_normalized_phase_differences * tanh_scaling) * 0.55
 
-        oscillation = (1 / np.exp((damping) * np.arange(length))) * np.sin(freq * np.arange(length))
-        oscillation = (oscillation / np.max(oscillation) + 1e-8) * -gain
+        _sample_points = np.arange(length)
+        _oscillation = (1 / np.exp((damping) * _sample_points)) * np.sin(freq * _sample_points) * np.tanh((1/fade_in) * _sample_points)
+        _oscillation = (_oscillation / np.max(_oscillation)) * -gain
 
         _point_offsets = np.zeros(np.shape(_phases))
         for _index in range(len(_point_offsets)-length):
-            _point_offsets[_index:_index+length] = _point_offsets[_index:_index+length] + (oscillation * _weighted_normalized_phase_differences[_index])
+            _point_offsets[_index:_index+length] = _point_offsets[_index:_index+length] + (_oscillation * _normalized_phase_differences[_index])
 
         _point_offsets = np.append(0, _point_offsets)
         _point_offsets = _point_offsets.reshape(-1, 1)
 
         _new_points = self._phase_offsets_to_points(_point_offsets, _normals_to_phases, _points)
         
-        return _new_points
-
-
+        return _new_points, _oscillation
 
 if __name__ == '__main__':
     error_simulator = Simulator(strength=100, pattern_length=10)
