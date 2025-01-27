@@ -149,7 +149,7 @@ class ImageProcessor:
     def _invert_and_normalize_linear(self, value):
         return 1 - (value / REWARD_DISTANCE_CLIPPING)
 
-    def __call__(self, template, drawing=None):
+    def __call__(self, template, drawing=None, save_images=True):
         # retrieve both images
         _template = template
 
@@ -166,7 +166,7 @@ class ImageProcessor:
             self.image_counter = 0
 
         # save both images in original form
-        if _save_images:
+        if _save_images and save_images:
             self.save_image(_drawing, 'original', 'drawing', self.call_counter)
             self.save_image(_template, 'original', 'template', self.call_counter)
 
@@ -177,7 +177,7 @@ class ImageProcessor:
         _inv_template = self._simplify_template(_template)
 
         # save edited images
-        if _save_images and SAVE_SIMPLIFIED:
+        if _save_images and SAVE_SIMPLIFIED and save_images:
             self.save_image(_inv_drawing, 'simplified', 'drawing', self.call_counter)
             self.save_image(_inv_template, 'simplified', 'template', self.call_counter)
 

@@ -8,8 +8,6 @@ from drawing_bot_api.serial_handler import Serial_handler
 import numpy as np
 import matplotlib as mpl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-mpl.get_backend()
-mpl.use('Agg')
 
 class DrawingBot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
@@ -78,7 +76,7 @@ class DrawingBot:
         shapes.Line(DOMAIN_BOX[0], DOMAIN_BOX[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
         shapes.PartialCircle(DOMAIN_DOME[0], DOMAIN_DOME[1], DOMAIN_DOME[2], DOMAIN_DOME[3]).plot(color=DOMAIN_COLOR, resolution=resolution)
 
-    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, points=None, color_assignment=None):
+    def plot(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, points=None, color_assignment=None, plot_in_training=False):
         
         fig, ax = plt.subplots()
         ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
@@ -160,10 +158,8 @@ class DrawingBot:
             image = np.asarray(buf)
             #image = image[120:850, 165:1145, 0:3] # old croping
             image = image[70:410, 90:570]
-            del canvas
-            plt.clf()
-            plt.close('all')
-            del fig
+            if not plot_in_training:
+                plt.close('all')
             return image
 
     def plot_point(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, point=None, color=None):

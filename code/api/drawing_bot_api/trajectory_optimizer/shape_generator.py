@@ -1,7 +1,7 @@
 import random
 from drawing_bot_api.shapes import Line, PartialCircle
 from math import sqrt
-from drawing_bot_api.delta_utils import ik_delta
+from drawing_bot_api.delta_utils import ik_delta, l1, l2
 from drawing_bot_api.logger import Log
 import time
 
@@ -9,6 +9,10 @@ MIN_NUM_OF_SHAPES = 3
 MAX_NUM_OF_SHAPES = 5
 RESTING_POINT = [0, 40]
 START_POINT = [0, 100]
+
+LEFT_MOTOR_P = [-0.065, 0]
+RIGHT_MOTOR_P = [0.065, 0]
+SINGULARITY_THRESHOLD = 0.95
 
 MIN_CIRCLE_RADIUS = 10
 
@@ -63,10 +67,10 @@ class ShapeGenerator:
         _delta = [_end_point[0] - _start_point[0], _end_point[1] - _start_point[1]]
         _length = sqrt(pow(_delta[0], 2) + pow(_delta[1], 2))
 
-        if _length > 2*MIN_CIRCLE_RADIUS:
+        if _length > 2 * MIN_CIRCLE_RADIUS:
             _radius = random.randint(int(_length/1.5), int(1.5*_length))
             _direction = (random.randint(0, 1) - 0.5) * 2
-            _big_angle = (random.randint(0, 1) - 0.5) * 2
+            _big_angle = random.randint(0, 1)
             _shape = PartialCircle(_start_point, _end_point, _radius, _direction, big_angle=_big_angle)
 
         return _shape
@@ -87,11 +91,22 @@ class ShapeGenerator:
                 return 1
             
             _point = [_point[0]/1000, _point[1]/1000]
-
+            
+            _distance_to_left_motor = sqrt(pow(_point[0] - LEFT_MOTOR_P[0], 2) + pow(_point[1] - LEFT_MOTOR_P[1], 2))
+            if _distance_to_left_motor > (l1 + l2) * SINGULARITY_THRESHOLD:
+                time.sleep(0.001)
+                return 1
+            
+            _distance_to_right_motor = sqrt(pow(_point[0] - RIGHT_MOTOR_P[0], 2) + pow(_point[1] - RIGHT_MOTOR_P[1], 2))
+            if _distance_to_right_motor > (l1 + l2) * SINGULARITY_THRESHOLD:
+                time.sleep(0.001)
+                return 1
+        
             try:
                 ik_delta(_point)
             except:
                 time.sleep(0.001)
                 return 1
+            
         time.sleep(0.001)
         return 0
