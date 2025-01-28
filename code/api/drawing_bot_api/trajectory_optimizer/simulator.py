@@ -127,6 +127,7 @@ class ExponentialDecaySimulator:
         _points = np.array(points)
         _fourier_coefficients = parameters[:7]
         _exponential_decay = parameters[7]
+        #_power = parameters[8]
 
         # calculate and process phases
         _phases = self._points_to_phases(points)
