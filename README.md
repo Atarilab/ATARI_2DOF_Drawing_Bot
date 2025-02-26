@@ -10,16 +10,16 @@ Use the API to interface with the drawing robot.
 ## Includes
 First of, import the api and the predefined shapes via:
 ```
-from drawing_bot_api import Drawing_bot
+from drawing_bot_api import DrawingBot
 from drawing_bot_api import shapes
 ```
 
 ## Intialisation
-To communication with the robot you need to create an instance of the `Drawing_bot` class:
+To communication with the robot you need to create an instance of the `DrawingBot` class:
 ```
-drawing_bot = Drawing_bot() # Creates an instance with default parameters
+drawing_bot = DrawingBot() # Creates an instance with default parameters
 ```
-Parameters:
+Arguments:
 - unit: Changes the unit used to describe the robots position within the working area (default: 'mm') \
   options:
   * millimeter: 'mm'
@@ -29,42 +29,48 @@ Parameters:
 
 ```
 # example
-drawing_bot = Drawing_bot(unit='m', speed=400)
+drawing_bot = DrawingBot(unit='m', speed=400)
 ```
 
 ## Add shapes
-To create a program sequence you add shapes to your instance of the `Drawing_bot` class.
+To create a program sequence you add shapes to your instance of the `DrawingBot` class.
 ```
-# example (in millimeters)
+# example (in millimetres)
 drawing_bot.add_shape(shapes.Line([20, 80], [40, 120]))
 ```
 
 ### Point
-TODO
+To move the robot to a single point you can use the `move_to_point()` function of the `DrawingBot` class.
+Arguments:
+- point: The point to which the robot should move
+```
+# example (in millimetres)
+drawing_bot.move_to_point([15, 90])
+```
 
 ### Line
 To draw a line use `shapes.Line(start_point, end_point)` \
-Parameters:
+Arguments:
 - start_point: Defines where the line should start
 - end_point: Defines where the line should end
 ```
-# example (in millimeters)
+# example (in millimetres)
 shapes.Line([20, 80], [40, 120])
 ```
 
 ### Circle
 To draw a circle use `shapes.Circle(center_point, radius)` \
-Parameters:
+Arguments:
 - center_point: Defines the center of the circle
 - radius: Defines the radius of the circle
 ```
-# example (in millimeters)
+# example (in millimetres)
 shapes.Circle([0, 100], 20)
 ```
 
 ### Partial Circle
 To draw a circle that's not fully completed use `shapes.Partial_circle(start_point, end_point, radius, direction)` \
-Parameters:
+Arguments:
 - start_point: Defines the start point of the partial circle
 - end_point: Defines the end point of the partial circle
 - radius: Defines the radius of the partial circle
@@ -72,7 +78,7 @@ Parameters:
 optional:
 - big_angle: Defines whether the smaller (`big_angle=False`) or bigger (`big_angle=True`) part of the partial circle is drawn. Default: `False`
 ```
-# example (in millimeters)
+# example (in millimetres)
 shapes.PartialCircle([-30, 100], [30, 100], 40, 1, big_angle=True)
 ```
 
@@ -92,7 +98,7 @@ drawing_bot.execute()
 ```
 Optional parameters:
 - promting: If set to `True` the user will get a promt to confirm the execution of the program before it is send to the robot. Default: `True`
-- clear_buffer: If set to `True` the program sequence will be erased from the buffer of the instance of the Drawing_bot class. Default: `True`
+- clear_buffer: If set to `True` the program sequence will be erased from the buffer of the instance of the DrawingBot class. Default: `True`
 
 ## Force reset
 In case the execution of the program code is causing problems because the serial connection to the robot isn't working, you can use `drawing_bot.hard_reset()` to reset the whole system and re-initialise the serial connection.\
