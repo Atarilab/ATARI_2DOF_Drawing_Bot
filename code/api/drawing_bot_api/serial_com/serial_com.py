@@ -16,6 +16,7 @@ class Serial_communicator():
         while not self.is_ready():
             time.sleep(0.1)
         print('Drawing bot is ready.')
+        self.handle_serial_commands(b'W8.598223836273565\nE0.8265541244958134\n')
 
     def check_connection(self):
         try:

@@ -1,6 +1,6 @@
 from keras import ops
 import tensorflow as tf
-from drawing_bot_api.trajectory_optimizer.config import *
+from drawing_bot_api.trajectory_optimizer.config_rl import *
 import numpy as np
 
 def entropy_loss(y_true, y_pred):
@@ -35,6 +35,23 @@ def custom_loss(y_true, y_pred):
     sigmas_loss = advantage_penalty * ADVANTAGE_FACTOR - SIGMA_ENTROPY_FACTOR * sigma_entropy #+ SIGMA_PENALTY_FACTOR * sigma_penalty
     loss = means_loss + sigmas_loss
     loss = ops.clip(loss, -GRADIENT_CLIPPING_LIMIT, GRADIENT_CLIPPING_LIMIT)
+    return loss
+
+def custom_loss_fourier(y_true, y_pred):
+    params = y_true[:, :-2]
+    advantage = y_true[:, -2]
+    sigma = y_true[:, -1]
+
+    pred_params = y_pred[:, :]
+
+    log_probs = -0.5 * ops.sum(((params - pred_params) / (sigma + 1e-8))**2 + 2 * ops.log(sigma + 1e-8) + ops.log(2 * np.pi), axis=1)
+    loss = ops.mean(-log_probs * advantage)
+    return loss
+
+def reward_loss(y_true, y_pred):
+    advantage = y_true[:, -2]
+    neutral_ypred = y_pred / y_pred
+    loss = ops.sum(neutral_ypred * advantage)
     return loss
 
 def weighted_MSE(y_true, y_pred):

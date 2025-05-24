@@ -19,7 +19,7 @@ class ErrorCode:
 
 class Log:
     def __init__(self, verbose):
-        self.verbose_level = verbose
+        self.verbose = verbose
 
     def cls(self):
         os.system('cls' if os.name=='nt' else 'clear')
@@ -27,5 +27,5 @@ class Log:
     def __call__(self, message, clear=False):
         if clear:
             self.cls()
-        if self.verbose_level:
+        if self.verbose:
             print(message)

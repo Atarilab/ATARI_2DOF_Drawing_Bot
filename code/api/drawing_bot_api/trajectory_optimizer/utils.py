@@ -17,8 +17,11 @@ class Scheduler:
         self.gamma = gamma
         self.call_counter = 0
 
-    def __call__(self, count_up=True):
-        _value = self.base_value * pow(self.gamma, self.call_counter)
+    def __call__(self, count_up=True, x=None):
+        if x is None:
+            _value = self.base_value * pow(self.gamma, self.call_counter)
+        else:
+            _value = self.base_value * pow(self.gamma, x)
         if count_up:
             self.call_counter += 1
         return _value

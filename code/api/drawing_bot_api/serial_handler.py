@@ -5,10 +5,11 @@ import psutil
 import subprocess
 from drawing_bot_api.config import *
 import platform
+from drawing_bot_api.logger import Log
 
 class Serial_handler:
 
-    def __init__(self):
+    def __init__(self, verbose=1):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
@@ -20,6 +21,7 @@ class Serial_handler:
         self.conn = None
         self.addr = None
         self.buffer = []
+        self.log = Log(verbose)
 
     def __init_connection(self):
         while True:
@@ -27,8 +29,8 @@ class Serial_handler:
                 break
             else:
                 self.start_serial_script()
-                time.sleep(10)
-                print('Starting serial communication script')
+                time.sleep(3)
+                self.log('Starting serial communication script')
         
         self.connect_to_serial_script()
 
@@ -37,8 +39,9 @@ class Serial_handler:
             self.conn.close()
 
     def connect_to_serial_script(self):
+        self.log(f'Connecting to serial script...')
         self.conn, self.addr = self.server_socket.accept()
-        print('Connected to serial script.')
+        self.log('Connected to serial script.')
 
     def check_socket_connected(self, conn):
         try:

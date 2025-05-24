@@ -40,7 +40,7 @@ class Circle:
 
 class PartialCircle:
     def __init__(self, start_point, end_point, radius, direction, big_angle=False):
-        # direction: clockwise or anti-clockwise
+        """direction: clockwise or anti-clockwise"""
         self.start_point = start_point
         self.end_point = end_point
         self.radius = radius

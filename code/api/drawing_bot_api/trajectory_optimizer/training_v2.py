@@ -5,7 +5,7 @@ import keras
 from keras import ops
 import numpy as np
 import tensorflow as tf
-from drawing_bot_api.trajectory_optimizer.config import *
+from drawing_bot_api.trajectory_optimizer.config_rl import *
 from drawing_bot_api.config import PLOT_XLIM, PLOT_YLIM
 import os
 from drawing_bot_api.trajectory_optimizer.image_processor import ImageProcessor

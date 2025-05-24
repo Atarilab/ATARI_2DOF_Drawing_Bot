@@ -10,7 +10,8 @@ import matplotlib as mpl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 class DrawingBot:
-    def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
+    def __init__(self, baud=115200, verbose=1, speed=200):
+        unit = 'mm'
         # unit: Define which unit the user is using
         # speed is measured in unit/s
 
@@ -23,13 +24,13 @@ class DrawingBot:
         self.unit = 1000
         self.shapes = []
         
-        if unit == 'm' or unit == 'meter':
-            self.unit = 1
-            self.log('Unit set to "m".')
-        elif unit == 'cm' or unit == 'centimeter':
-            self.unit = 100
-            self.log('Unit set to "cm".')
-        elif unit == 'mm' or unit == 'millimeter':
+        #if unit == 'm' or unit == 'meter':
+        #    self.unit = 1
+        #    self.log('Unit set to "m".')
+        #elif unit == 'cm' or unit == 'centimeter':
+        #    self.unit = 100
+        #    self.log('Unit set to "cm".')
+        if unit == 'mm' or unit == 'millimeter':
             self.unit = 1000
             self.log('Unit set to "mm".')
         else:
@@ -38,13 +39,22 @@ class DrawingBot:
     def get_angles(self, position):
         x=position[0]/self.unit
         y=position[1]/self.unit
+        _offset = 0.001
+        while True:
+            try:
+                angles = ik_delta([x, y])
+                break
+            except:
+                CENTER_POINT = [0, 0.11]
+                _center_to_point_vector = [CENTER_POINT[0]-x, CENTER_POINT[1]-y]
+                x = x + _center_to_point_vector[0] * _offset
+                y = y + _center_to_point_vector[1] * _offset
+                _offset += 0.001
+                #print(f'Offset:{_offset} \tx: {x} \ty: {y}')
 
-        try:
-            angles = ik_delta([x, y])
-            return angles
-        except:
-            self.error_handler("Targeted position is outside of robots domain.", ErrorCode.DOMAIN_ERROR)
-            exit()
+                #self.error_handler("Targeted position is outside of robots domain.", ErrorCode.DOMAIN_ERROR)
+                #exit()
+        return angles
 
     def send_angle(self, angle, side, serial_handler):
         message = f'{side}{3*float(angle)}\n'
@@ -53,7 +63,7 @@ class DrawingBot:
     # OLD AND UNUSED #########
     def update_position(self, position, serial_handler):
         angles = self.get_angles(position)
-        self.log(f'Position: {position}, Angles: {angles}', clear=False)
+        #self.log(f'Position: {position}, Angles: {angles}', clear=False)
         self.send_angle(angles[0], 'W', serial_handler)
         self.send_angle(angles[1], 'E', serial_handler)
         time.sleep(SERIAL_DELAY)
@@ -61,11 +71,10 @@ class DrawingBot:
 
     def add_position(self, position, serial_handler):
         angles = self.get_angles(position)
-        self.log(f'Position: {position}, Angles: {angles}', clear=False)
+        #self.log(f'Position: {position}, Angles: {angles}', clear=False)
         self.send_angle(angles[0], 'W', serial_handler)
         self.send_angle(angles[1], 'E', serial_handler)
         #time.sleep(SERIAL_DELAY)
-
 
     def add_shape(self, shape):
         self.shapes.append(shape)
@@ -109,7 +118,7 @@ class DrawingBot:
                 plt.plot(points[0][0], points[0][1], marker="o", markersize=START_END_DOT_SIZE, markeredgecolor=START_DOT_COLOR, markerfacecolor=START_DOT_COLOR, label='Start point')
                 
                 _points = np.array(points).T
-                plt.plot(_points[0], _points[1], color=SHAPE_COLOR)
+                plt.plot(_points[0], _points[1], color=SHAPE_COLOR, linewidth=PLOT_THICKNESS)
 
             else:
                 _color_assignment = np.append([0, 0], color_assignment)
@@ -130,9 +139,9 @@ class DrawingBot:
                         else:
                             _value = -np.max([-1, _value])
                             _color = (0, 0, _value)
-                        _size = 1#np.max([1, np.abs(_value) * 2])
+                        _size = PLOT_THICKNESS #np.max([1, np.abs(_value) * 2])
                         #print(f'Color: {_color}\tSize: {_size}')
-                        plt.plot(_x, _y, marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
+                        plt.plot(_x, _y, marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size, linewidth=_size)
                     _prev_point = points[_index]
                     #plt.plot(point[0], point[1], marker="o", markersize=PLOT_THICKNESS, markeredgecolor=SHAPE_COLOR, markerfacecolor=SHAPE_COLOR, label='Start point')
                 
@@ -157,49 +166,9 @@ class DrawingBot:
             # convert to a NumPy array
             image = np.asarray(buf)
             #image = image[120:850, 165:1145, 0:3] # old croping
-            image = image[70:410, 90:570]
+            #image = image[70:410, 90:570]
             if not plot_in_training:
                 plt.close('all')
-            return image
-
-    def plot_point(self, blocking=True, resolution=PLOTTING_RESOLUTION, training_mode=False, point=None, color=None):
-        
-        fig, ax = plt.subplots()
-        ax.set_xlim((PLOT_XLIM[0]*(self.unit/1000), PLOT_XLIM[1]*(self.unit/1000)))
-        ax.set_ylim((PLOT_YLIM[0]*(self.unit/1000), PLOT_YLIM[1]*(self.unit/1000)))
-
-        if not training_mode:
-            self.__plot_domain(resolution=resolution)
-
-
-        if color is None:
-            _color = (0, 0, 0)
-        else:
-            _color = color
-
-        _size = 1
-        plt.plot(point[0], point[1], marker="o", color=_color, markeredgecolor=_color, markerfacecolor=_color, markersize=_size)
-
-        plt.plot(0, 0, color=BRIDGE_COLOR, label='Bridging lines')
-        plt.plot(0, 0, color=SHAPE_COLOR, label='User defined drawings')
-        plt.plot(0, 0, color=DOMAIN_COLOR, label='Domain')
-
-        plt.gca().set_aspect('equal', adjustable='box')
-
-        if not training_mode:
-            plt.legend(bbox_to_anchor=(1, 1.15), ncol=3)    
-            plt.show(block=blocking)
-        else:
-            # Retrieve a view on the renderer buffer
-            plt.figure(figsize=(6, 4), dpi=100)
-            canvas = FigureCanvasAgg(fig)
-            canvas.draw()
-            buf = canvas.buffer_rgba()
-            # convert to a NumPy array
-            image = np.asarray(buf)
-            #image = image[120:850, 165:1145, 0:3] # old croping
-            image = image[70:410, 90:570]
-            plt.close('all')
             return image
 
     def plot_sampled_domain(self):
@@ -249,11 +218,11 @@ class DrawingBot:
 
     def execute(self, promting=True, clear_buffer=True, points=None): # time defines how long the drawing process should take
 
-        if not self.shapes:
+        if not self.shapes and points is None:
             self.error_handler('List of shapes empty. Use drawing_bot.add_shape() to add shapes for the robot to draw!', ErrorCode.NO_SHAPES_ERROR)
             return 1
         
-        serial_handler = Serial_handler()
+        serial_handler = Serial_handler(verbose=self.log.verbose)
 
         _points = points
 
@@ -262,8 +231,6 @@ class DrawingBot:
 
         for point in _points:
             self.add_position(point, serial_handler=serial_handler)
-
-        self.add_position(self.shapes[-1].get_point(1), serial_handler=serial_handler) # Add last point 
 
         if clear_buffer:
             self.shapes.clear()

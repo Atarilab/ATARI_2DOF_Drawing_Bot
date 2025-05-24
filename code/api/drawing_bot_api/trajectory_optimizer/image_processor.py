@@ -4,7 +4,7 @@ import cv2
 import os
 import numpy as np
 from math import exp
-from drawing_bot_api.trajectory_optimizer.config import *
+from drawing_bot_api.trajectory_optimizer.config_rl import *
 
 class ImageProcessor:
     def __init__(self):
@@ -33,21 +33,21 @@ class ImageProcessor:
         _combined_image = np.hstack((_image1, _image2, _image3))
         cv2.imwrite(_path, _combined_image)
     
-    def _simplify_template(self, image):
+    def _simplify_image(self, image):
         # Enhance Contrast
         _gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         #_clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
        # _enhanced_contrast = _clahe.apply(_gray)
 
         # Convert to Black and White
-        _, _black_and_white = cv2.threshold(_gray, 0, 255, cv2.THRESH_BINARY)
+        _, _black_and_white = cv2.threshold(_gray, 100, 255, cv2.THRESH_BINARY)
 
         # Invert
         _inverted = cv2.bitwise_not(_black_and_white)
 
         return _inverted
     
-    def _simplify_drawing(self, image):
+    def _simplify_drawing(self, image): # OLD
         # Blurring for noise reduction
         _blurred = cv2.GaussianBlur(image, (5, 5), 0)
 
@@ -119,13 +119,13 @@ class ImageProcessor:
     def calc_rewards_for_individual_points(self, _images_of_template_points, drawing):
         _drawing = drawing
         # turn to inverted binary black and white image
-        _simpl_drawing = self._simplify_template(_drawing)
+        _simpl_drawing = self._simplify_image(_drawing)
         _grey_drawing = _simpl_drawing#cv2.cvtColor(_simpl_drawing, cv2.COLOR_BGR2GRAY)
         _, _inv_drawing = cv2.threshold(_grey_drawing, 127, 255, cv2.THRESH_BINARY)
 
         _rewards = []
         for _template_point_image in _images_of_template_points:
-            _inv_template_point_image = self._simplify_template(_template_point_image)
+            _inv_template_point_image = self._simplify_image(_template_point_image)
             _difference = self.calc_similiarity_via_chamfer_matching(_inv_template_point_image, _inv_drawing)
             if _difference > REWARD_DISTANCE_CLIPPING:
                 _difference = REWARD_DISTANCE_CLIPPING
@@ -149,37 +149,37 @@ class ImageProcessor:
     def _invert_and_normalize_linear(self, value):
         return 1 - (value / REWARD_DISTANCE_CLIPPING)
 
-    def __call__(self, template, drawing=None, save_images=True):
+    def __call__(self, template, drawing=None, save_images=True, save_folder='original', return_image=False, crop_drawing=None, crop_template=None):
         # retrieve both images
         _template = template
 
         _drawing = drawing
         if _drawing is None:
             _drawing = self.camera()
-            _drawing = _drawing[10:600, 220:1060]
-
-            _template = _template[:690, :]
+            if crop_drawing is not None:
+                #_drawing = _drawing[10:600, 220:1060]
+                _drawing = _drawing[crop_drawing[0]:-crop_drawing[1], crop_drawing[2]:-crop_drawing[3]]
+            if crop_template is not None:
+                _template = _template[crop_template[0]:-crop_template[1], crop_template[2]:-crop_template[3]]
+            
+            h, w = _template.shape[:2]
+            _drawing = cv2.resize(_drawing, (w, h), interpolation=cv2.INTER_LINEAR)
 
         _save_images = False
         if self.image_counter == SAVE_IMAGE_FREQ:
             _save_images = True
             self.image_counter = 0
 
-        # save both images in original form
-        if _save_images and save_images:
-            self.save_image(_drawing, 'original', 'drawing', self.call_counter)
-            self.save_image(_template, 'original', 'template', self.call_counter)
-
-        # turn to inverteed binary black and white image
-        _simpl_drawing = self._simplify_template(_drawing)
-        _grey_drawing = _simpl_drawing#cv2.cvtColor(_simpl_drawing, cv2.COLOR_BGR2GRAY)
+        # turn to inverted binary black and white image
+        _simpl_drawing = self._simplify_image(_drawing)
+        _grey_drawing = _simpl_drawing #cv2.cvtColor(_simpl_drawing, cv2.COLOR_BGR2GRAY)
         _, _inv_drawing = cv2.threshold(_grey_drawing, 127, 255, cv2.THRESH_BINARY)
-        _inv_template = self._simplify_template(_template)
+        _inv_template = self._simplify_image(_template)
 
         # save edited images
-        if _save_images and SAVE_SIMPLIFIED and save_images:
-            self.save_image(_inv_drawing, 'simplified', 'drawing', self.call_counter)
-            self.save_image(_inv_template, 'simplified', 'template', self.call_counter)
+        if _save_images and save_images:
+            self.save_image(_inv_drawing, save_folder, 'drawing', self.call_counter)
+            self.save_image(_inv_template, save_folder, 'template', self.call_counter)
 
         # calc scores
         #similarity_hu_moments = self.calc_similarity_via_hu_moments(_inv_drawing, _inv_template)
@@ -201,8 +201,10 @@ class ImageProcessor:
 
         #if similarity_convex_hull is None:
         #    return None
-
-        return norm_similarity_chamfer_matching
+        if return_image:
+            return norm_similarity_chamfer_matching, _inv_drawing, _inv_template
+        else:
+            return norm_similarity_chamfer_matching
 
 
 if __name__ == '__main__':

@@ -73,7 +73,7 @@ float find_zero_angle(FOCMotor* motor, int direction) {
     motor->loopFOC();
     motor->move();
 
-    if ( fabs(motor->shaft_velocity) < 2) {
+    if ( fabs(motor->shaft_velocity) < 1) {
       if (millis()-timer > 100) {
         if (direction+1) zero_angle = motor->shaft_angle + 0.3;
         else zero_angle = motor->shaft_angle - 9.42;
