@@ -8,8 +8,6 @@ from drawing_bot_api.serial_handler import Serial_handler
 import numpy as np
 import matplotlib as mpl
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-mpl.get_backend()
-mpl.use('Agg')
 
 class DrawingBot:
     def __init__(self, baud=115200, verbose=2, unit='mm', speed=200):
